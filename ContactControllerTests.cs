@@ -74,7 +74,7 @@ namespace scriptbuster.dev_UnitTests
             //assert
             Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
             _mailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once());
-            Assert.ThrowsAsync<Exception>(() => _mailSender.Object.SendEmail("test", "test", "test"), "Test exception");
+            Assert.ThrowsAsync<Exception>(() => _mailSender.Object.SendEmail("test", "test", "test"));
         }
         [Test]
         public async Task SendMessage_EverythingWOrks_ReturnClientInfo()
