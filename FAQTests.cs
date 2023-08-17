@@ -66,6 +66,7 @@ namespace scriptbuster.dev_UnitTests
                 Assert.That(page.FAQs, Has.Count.EqualTo(3));
                 Assert.That(page.FAQs[0].Id, Is.EqualTo(1));
                 Assert.That(page.FAQs[1].Question, Is.EqualTo("TESTQuestion2"));
+                Assert.That(page.ViewData["CurrentPage"] as string, Is.EqualTo("FAQ"));
             });
         }
     }

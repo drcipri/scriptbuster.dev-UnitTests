@@ -21,16 +21,20 @@ namespace scriptbuster.dev_UnitTests
         private Mock<ILogger<ContactController>> _logger;
         private Mock<IEmailSender> _mailSender;  
         private Mock<IRepositoryMessage> _repositoryMessage;
-        private Mock<IConfiguration> _configuration;
+        private Mock<IServiceProvider> _serviceProvider;
+        private Mock<IRepositoryProjectMessage> _repositoryProjectMessage;
         private ContactController _controller;
+    
         [SetUp]
         public void SetUp()
         {
             _logger = new Mock<ILogger<ContactController>>();
             _repositoryMessage = new Mock<IRepositoryMessage>();
             _mailSender = new Mock<IEmailSender>();
-            _configuration = new Mock<IConfiguration>();
-            _controller = new ContactController(_logger.Object, _repositoryMessage.Object, _mailSender.Object);
+            _serviceProvider = new Mock<IServiceProvider>();
+            _repositoryProjectMessage = new Mock<IRepositoryProjectMessage>();
+            _controller = new ContactController(_logger.Object, _repositoryMessage.Object, _repositoryProjectMessage.Object,
+                                                _mailSender.Object, _serviceProvider.Object);
         }
 
         [Test]
@@ -47,35 +51,14 @@ namespace scriptbuster.dev_UnitTests
             };
 
             //act
-            var result = await _controller.SendMessage(message, _configuration.Object) as ViewResult;
+            var result = await _controller.SendMessage(message) as ViewResult;
 
             //assert
             Assert.That(result?.ViewName, Is.EqualTo("Index"));
             Assert.That(result.ViewData.ModelState.ContainsKey("error"), Is.True);
+            Assert.That((bool)result.ViewData["DisplayErrors"]!, Is.True);
         }
 
-        [Test]
-        public async Task SendMessage_WorksButSendingEmailThrowsErrorButItWontBreakTheEndpoint_ReturnClientInfo()
-        {
-            //arrange
-            _mailSender.Setup(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-                       .ThrowsAsync(new Exception("Test exception"));
-            var message = new Message
-            {
-                Id = 1,
-                FullName = "Test",
-                Email = "Test@test",
-                ClientMessage = "New client Message"
-            };
-
-            //act
-           var result = (await _controller.SendMessage(message, _configuration.Object)) as RedirectToPageResult;
-
-            //assert
-            Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
-            _mailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once());
-            Assert.ThrowsAsync<Exception>(() => _mailSender.Object.SendEmail("test", "test", "test"));
-        }
         [Test]
         public async Task SendMessage_EverythingWOrks_ReturnClientInfo()
         {
@@ -88,11 +71,50 @@ namespace scriptbuster.dev_UnitTests
             };
 
             //act
-            var result = (await _controller.SendMessage(message, _configuration.Object)) as RedirectToPageResult;
+            var result = (await _controller.SendMessage(message)) as RedirectToPageResult;
 
             //assert
             Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
-            _mailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.AtLeast(2));
+        }
+
+        [Test]
+        public async Task SendProjectMessage_ModelStateIsNotValid_ReturnView()
+        {
+            //arrange
+            _controller.ModelState.AddModelError("error", "error message");
+            var message = new ProjectMessage
+            {
+                Id = 1,
+                FullName = "Test",
+                Email = "Test@test",
+                ProjectDescription = "New client Message"
+            };
+
+            //act
+            var result = await _controller.SendProjectMessage(message) as ViewResult;
+
+            //assert
+            Assert.That(result?.ViewName, Is.EqualTo("Index"));
+            Assert.That(result.ViewData.ModelState.ContainsKey("error"), Is.True);
+            Assert.That((bool)result.ViewData["DisplayErrors"]!, Is.True);
+        }
+
+        [Test]
+        public async Task SendProjectMessage_EverythingWOrks_ReturnClientInfo()
+        {
+            var message = new ProjectMessage
+            {
+                Id = 1,
+                FullName = "Test",
+                Email = "Test@test",
+                ProjectDescription = "New client Message"
+            };
+
+            //act
+            var result = (await _controller.SendProjectMessage(message)) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
         }
 
     }
