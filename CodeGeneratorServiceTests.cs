@@ -51,7 +51,8 @@ namespace scriptbuster.dev_UnitTests
             var result = codeGenerator.GenerateCode(codeLength);
 
             //assert
-            Assert.That(result.ToString().Length, Is.EqualTo(codeLength));
+            Assert.That(result.ToString($"D{codeLength}").Length, Is.EqualTo(codeLength));
+            //ToString($"D{codeLength}") the code might come with 0 first digit and will be discarded if we dont preserve it.
         }
     }
 }
