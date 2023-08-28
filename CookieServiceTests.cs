@@ -62,6 +62,7 @@ namespace scriptbuster.dev_UnitTests
         public void AddEssentialCookie_IResponseCookieIsNull_ThrowsException()
         {
             //arrange
+            //ResponseCookies are set up in the CookieService constructor so i had to mock everything again in order to return an null object.
             _logger = new Mock<ILogger<CookieService>>();
             _contextAccessor = new Mock<IHttpContextAccessor>();
             _mockHttpContext = new Mock<HttpContext>();
@@ -257,6 +258,7 @@ namespace scriptbuster.dev_UnitTests
         }
 
         #endregion
+      
         #region CookieExist
         [Test]
         public void CookieExist_RequestCookieCollectionIsNull_ThrowException()

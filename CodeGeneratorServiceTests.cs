@@ -52,7 +52,33 @@ namespace scriptbuster.dev_UnitTests
 
             //assert
             Assert.That(result.ToString($"D{codeLength}").Length, Is.EqualTo(codeLength));
-            //ToString($"D{codeLength}") the code might come with 0 first digit and will be discarded if we dont preserve it.
+            //ToString($"D{codeLength}") the code might come with 0 first digit and will be discarded if we dont preserve it and the Test will fail.
+        }
+
+        //generate API ke
+        [Test]
+        public void GenerateApiKey_ByteLengthIsLessThenZeor_ThrowException()
+        {
+            //arrange
+            var mock = new Mock<ILogger<CodeGenerator>>();
+            var codeGenerator = new CodeGenerator(mock.Object);
+
+            //assert
+            Assert.Throws<ArgumentException>(() => codeGenerator.GenerateApiKey(-1));
+        }
+        [Test]
+        public void GeenerateApiKey_Works()
+        {
+            //arrange
+            var mock = new Mock<ILogger<CodeGenerator>>();
+            var codeGenerator = new CodeGenerator(mock.Object);
+
+            //act
+            var result =  codeGenerator.GenerateApiKey();
+
+            //assert
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Length, Is.GreaterThan(0));
         }
     }
 }
