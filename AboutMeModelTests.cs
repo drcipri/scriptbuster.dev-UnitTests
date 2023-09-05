@@ -19,7 +19,7 @@ namespace scriptbuster.dev_UnitTests
         {
             //arrange
             var mock = new Mock<IRepositoryAboutMePage>();
-            mock.Setup(x => x.GetAboutMePageDataAsync(It.IsAny<int>())).ReturnsAsync(new AboutMePage
+            mock.Setup(x => x.GetAboutMePageDataAsync()).ReturnsAsync(new AboutMePage
             {
                 Id = 1,
                 Name = "Name",
