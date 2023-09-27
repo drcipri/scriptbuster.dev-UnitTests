@@ -1,14 +1,19 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using scriptbuster.dev.Controllers;
-using scriptbuster.dev.Infrastructure.ViewModels.AuthenticationController;
+using scriptbuster.dev.Infrastructure.ApiModels;
+using scriptbuster.dev.Infrastructure.ViewModels.AccountController;
 using scriptbuster.dev.Services.CookieService;
 using scriptbuster.dev.Services.SessionService;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -47,7 +52,7 @@ namespace scriptbuster.dev_UnitTests
                                                        _emailSender.Object, _accesor.Object, _cache.Object, _session.Object,
                                                        _cookieService.Object);
         }
-
+        #region Login Logout
         [Test]
         public void Login_ReturnUrlIsNull_ReturnView()
         {
@@ -251,6 +256,456 @@ namespace scriptbuster.dev_UnitTests
             Assert.That(result!.ActionName, Is.EqualTo("Login"));
             _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
         }
+        #endregion
+        #region Reset Password Endpoints
+        [Test]
+        public void ForgotPassword_CanCreateTheSendResetPasswordLinkForAjaxRequestForTHeFrontEnd_ReturnItsView()
+        {
+            //arrange
+            var mockIUrlHelper = new Mock<IUrlHelper>();
+            _accountController.Url = mockIUrlHelper.Object;
+            mockIUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("testHost/test-controller/test-action");
+            //act
+            _accountController.ForgotPassword();
+            string ajaxLink = _accountController.ViewBag.AjaxLink;  
+            //assert 
+            //check if contains the route of the target endpoint
+            StringAssert.Contains("test-controller", ajaxLink);
+            StringAssert.Contains("test-action", ajaxLink);
+        }
+        [Test]
+        public async Task SendResetPasswordLink_ModelStateIsNotValid_ReturnBadRequest()
+        {
+            //arrange
+            _accountController.ModelState.AddModelError("Error", "Test error");
+
+            //act
+            var result = await _accountController.SendResetPasswordLink(default!) as BadRequestObjectResult;
+            var model = result?.Value as ModelStateDictionary ?? new();
+            
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Never());
+            _emailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("emailtest.com")]//without @
+        public async Task SendResetPasswordLink_StringIsNullOREmptyOrIsNotValid_ReturnBadRequest(string email)
+        {
+            ///act
+            var result = await _accountController.SendResetPasswordLink(email) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("Empty email"));
+            Assert.That(model.Message, Is.EqualTo("A valid email is required!(@)"));
+            _emailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+            _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task SendResetPasswordLink_ResetPassswordAttemptsAreBiggerThanMaxAttempts_ReturnBadRequest()
+        {
+            //arrange
+            int maxAttempts = 7;
+            _session.Setup(x => x.GetInt32(It.IsAny<string>())).ReturnsAsync(maxAttempts);
+
+            //act
+            var result = await _accountController.SendResetPasswordLink("test@email.com") as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("ResetPasswordAbuse"));
+            Assert.That(model.Message, Is.EqualTo("Reset Password Abuse, try again later"));
+            _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Once());
+
+            _emailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task SendResetPaswordLink_UserIsNotFound_ReturnOkResult()
+        {
+            //arrange not needed the User going to be null by default because of moq
+
+            //act
+            var result = await _accountController.SendResetPasswordLink("test@email.com") as OkObjectResult;
+            var model = result?.Value as SuccesResponse ?? new();
+
+            //arrange
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("a message was sent to this email address", model.Message);
+            _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.FindByEmailAsync("test@email.com"), Times.Once());
+          
+            _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.IsAny<IdentityUser>()), Times.Never());
+            _emailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task SendeResetPasswordLink_SendEmailThrowsExceptionButWontBreakTheResponse_ReturnOkResult()
+        {
+            //arrange
+            // 1.return a user
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            //2.Moq IUrlHelper
+            var mockIUrlHelepr = new Mock<IUrlHelper>();
+            _accountController.Url = mockIUrlHelepr.Object;
+            //mock to get the Scheme
+            var mockRequest = new Mock<HttpRequest>();
+            mockRequest.SetupGet(x => x.Scheme).Returns("http");
+            _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
+            _context.Setup(x => x.Request).Returns(mockRequest.Object);
+
+            //3/.Make SendEmail throw an exception
+            _emailSender.Setup(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ThrowsAsync(new Exception("test exception"));
+
+            //act
+            var result = await _accountController.SendResetPasswordLink("test@email.com") as OkObjectResult;
+            var model = result?.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("a message was sent to this email address", model.Message);
+
+            _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.Is<IdentityUser>(x => x == user)), Times.Once());
+            Assert.ThrowsAsync<Exception>(() =>_emailSender.Object.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), "test exception");
+        }
+        [Test]
+        public async Task SendeResetPasswordLink_EverythingWorks_ReturnOkResult()
+        {
+            //arrange
+            // 1.return a user
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            //2.Moq IUrlHelper
+            _accountController.Url = new ManualMockUrlHelper();
+            //mock scheme
+            var mockRequest = new Mock<HttpRequest>();
+            mockRequest.SetupGet(x => x.Scheme).Returns("http");
+            _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
+            _context.Setup(x => x.Request).Returns(mockRequest.Object);
+
+
+            //act
+            var result = await _accountController.SendResetPasswordLink("test@email.com") as OkObjectResult;
+            var model = result?.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("a message was sent to this email address", model.Message);
+
+            _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.Is<IdentityUser>(x => x == user)), Times.Once());
+            _emailSender.Verify(x => x.SendEmail("test@email.com", "Reset Password", It.Is<string>(x => x.Contains("localTest/test/link"))));
+        }
+
+        //ResetPassword
+        [Test]
+        public async Task ResetPassword_ModelStateIsNotvalid_ReturRedirectToPage()
+        {
+            //arramge
+            _accountController.ModelState.AddModelError("error", "Test Message");
+
+            //act
+            var result = await _accountController.ResetPassword("","") as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        [TestCase("","test@email.com")]
+        [TestCase(null, "test@email.com")]
+        [TestCase("test", "")]
+        [TestCase("test", null)]
+        [TestCase("test","testemail.com")]
+        public async Task ResetPassword_TokenOrEmailIsNullOrEmpty_ReturnRedirectToPage(string token, string email)
+        {
+            //act
+            var result = await _accountController.ResetPassword(token, email) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ResetPassword_UserIsNotFound_ReturnClientInfo()
+        {
+            //act
+            var result = await _accountController.ResetPassword("token", "test@email.com") as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), 
+                                                            It.IsAny<string>(), It.IsAny<string>(), 
+                                                            It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ResetPassword_TokenIsExpired_ReturnClientInfoPage()
+        {
+            //arrange
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(false);
+            IdentityUser user = new();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            //act
+            var result = await _accountController.ResetPassword("token", "test@email.com") as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync("test@email.com"), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), 
+                                                            It.IsAny<string>(), It.IsAny<string>(), 
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.IsAny<IdentityUser>()), Times.Never());
+        }
+        [Test]
+        public async Task ResetPassword_EverythingWorksNewPasswordResetTokeHasBeenGenerated_ReturnItsview()
+        {
+            //arrange
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(true);//is valid
+            IdentityUser user = new();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.GeneratePasswordResetTokenAsync(It.IsAny<IdentityUser>())).ReturnsAsync("testToken");
+            //act
+            var model = (await _accountController.ResetPassword("token", "test@email.com") as ViewResult)?.ViewData.Model as ChangePasswordViewModel ?? new();
+
+            //assert
+            Assert.That(model.Email, Is.EqualTo("test@email.com"));
+            Assert.That(model.Token, Is.EqualTo("testToken"));
+            _userManager.Verify(x => x.FindByEmailAsync("test@email.com"), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(),
+                                                            It.IsAny<string>(), It.IsAny<string>(),
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(user), Times.Once());
+        }
+
+        //ChangePassword
+        [Test]
+        [TestCase("", "test@email.com")]
+        [TestCase(null, "test@email.com")]
+        [TestCase("test", "")]
+        [TestCase("test", null)]
+        [TestCase("test", "testemail.com")]
+        public async Task ChangePassword_EmailOrTokenAreNullOREmpty_RedirectToPageClientInfo(string token, string email)
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel 
+            { 
+                Email = email,
+                Token = token
+            };
+            //add model state error to make sure ModelState is not called first
+            _accountController.ModelState.AddModelError("error", "ErrorTest");
+
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_ModelStateIsNotValid_ReturnResetPasswordView()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken"
+            };
+            _accountController.ModelState.AddModelError("error", "ErrorTest");
+
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as ViewResult;
+            var model = result?.ViewData.Model as ChangePasswordViewModel ?? new();
+
+            //assert
+            Assert.That(result!.ViewName, Is.EqualTo("ResetPassword"));
+            Assert.That(model, Is.SameAs(viewModel));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_UserIsNull_RedirectToClientInfo()
+        {
+            
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "password",
+                RepeatPassword = "password"
+            };
+
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), 
+                                                            It.IsAny<string>(),It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_TokenIsExpired_RedirectToClientInfo()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "password",
+                RepeatPassword = "password"
+            };
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(), 
+                         It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(false);
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user, 
+                                                            It.IsAny<string>(), It.IsAny<string>(), 
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.ResetPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_PasswordIsNotValid_ReturnViewResult()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "password",
+                RepeatPassword = "password"
+            };
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(),
+                         It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(true);
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as ViewResult;
+            var model = result?.ViewData.Model as ChangePasswordViewModel ?? new();
+
+            //assert
+            Assert.That(result!.ViewName, Is.EqualTo("ResetPassword"));
+            Assert.That(model.Email, Is.EqualTo("test@email"));
+            Assert.That(model.Token, Is.EqualTo("testToken"));
+            Assert.That(result.ViewData.ModelState.ContainsKey("SoftPassword"));
+
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user,
+                                                            It.IsAny<string>(), It.IsAny<string>(),
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.ResetPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_PasswordsDontMatch_ReturnViewResult()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "passworD1@",
+                RepeatPassword = "passworD1a"
+            };
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(),
+                         It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(true);
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as ViewResult;
+            var model = result?.ViewData.Model as ChangePasswordViewModel ?? new();
+
+            //assert
+            Assert.That(result!.ViewName, Is.EqualTo("ResetPassword"));
+            Assert.That(model.Email, Is.EqualTo("test@email"));
+            Assert.That(model.Token, Is.EqualTo("testToken"));
+            Assert.That(result.ViewData.ModelState.ContainsKey("PasswordDoNotMatch"));
+
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user,
+                                                            It.IsAny<string>(), It.IsAny<string>(),
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.ResetPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task ChangePassword_ResetingPasswordWasUnsuccesfull_ReturnClientInfo()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "passworD1@",
+                RepeatPassword = "passworD1@"
+            };
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(),
+                         It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(true);
+            _userManager.Setup(x => x.ResetPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(new IdentityResultMock(false));
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            Assert.That(result!.RouteValues!["info"] as string, Does.Contain("Something went wrong while changing your password."));
+
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user,
+                                                            It.IsAny<string>(), It.IsAny<string>(),
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.ResetPasswordAsync(user, It.IsAny<string>(), It.IsAny<string>()), Times.Once());
+        }
+        [Test]
+        public async Task ChangePassword_ResetingPasswordWasSuccesfull_ReturnClientInfo()
+        {
+            //arrange
+            var viewModel = new ChangePasswordViewModel
+            {
+                Email = "test@email",
+                Token = "testToken",
+                Password = "passworD1@",
+                RepeatPassword = "passworD1@"
+            };
+            var user = new IdentityUser();
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<IdentityUser>(),
+                         It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(true);
+            _userManager.Setup(x => x.ResetPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(new IdentityResultMock(true));
+            //act
+            var result = await _accountController.ChangePassword(viewModel) as RedirectToPageResult;
+
+            //assert
+            Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
+            Assert.That(result!.RouteValues!["info"] as string, Does.Contain("password has been changed"));
+
+            _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user,
+                                                            It.IsAny<string>(), It.IsAny<string>(),
+                                                            It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.ResetPasswordAsync(user, viewModel.Token, viewModel.Password), Times.Once());
+        }
+        #endregion
     }
 
     //i could not mock SignInResult so i had to use inheritance to change the succeded value.
@@ -260,6 +715,45 @@ namespace scriptbuster.dev_UnitTests
         public SignInResultMock(bool succedValue)
         {
             Succeeded = succedValue;
+        }
+    }
+    public class IdentityResultMock : IdentityResult
+    {
+        public IdentityResultMock(bool succedValue)
+        {
+            Succeeded = succedValue;
+        }
+    }
+
+    //WrapIURLHelper. In One test method i use an Extension method that i cannot mock. I have to mock it manually.
+    public class ManualMockUrlHelper : IUrlHelper
+    {
+        public ActionContext ActionContext => throw new NotImplementedException();
+
+        public string? Action(UrlActionContext actionContext)
+        {
+            return "localTest/test/link";
+        }
+        
+        [return: NotNullIfNotNull("contentPath")]
+        public string? Content(string? contentPath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool IsLocalUrl([NotNullWhen(true)] string? url)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string? Link(string? routeName, object? values)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string? RouteUrl(UrlRouteContext routeContext)
+        {
+            throw new NotImplementedException();
         }
     }
 }
