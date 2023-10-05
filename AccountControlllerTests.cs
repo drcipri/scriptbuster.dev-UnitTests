@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
+using NuGet.Frameworks;
 using scriptbuster.dev.Controllers;
 using scriptbuster.dev.Infrastructure.ApiModels;
 using scriptbuster.dev.Infrastructure.ViewModels.AccountController;
@@ -16,6 +17,9 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -53,6 +57,23 @@ namespace scriptbuster.dev_UnitTests
                                                        _cookieService.Object);
         }
         #region Login Logout
+        [Test]
+        public void Login_UserIsAuthethicated_RedirectToAdmin()
+        {
+            //arrange 
+            var mockIdentity = new Mock<IIdentity>();
+            mockIdentity.SetupGet(x => x.IsAuthenticated).Returns(true);
+            var mockPrincipal = new Mock<ClaimsPrincipal>();
+            mockPrincipal.SetupGet(x => x.Identity).Returns(mockIdentity.Object);
+            _context.SetupGet(x => x.User).Returns(mockPrincipal.Object);
+            _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
+            
+            //act
+            var result =  _accountController.Login(default) as RedirectToPageResult;
+
+            //arrange
+            Assert.That(result?.PageName, Is.EqualTo("/Admin"));
+        }
         [Test]
         public void Login_ReturnUrlIsNull_ReturnView()
         {
@@ -704,6 +725,296 @@ namespace scriptbuster.dev_UnitTests
                                                             It.IsAny<string>(), It.IsAny<string>(),
                                                             It.IsAny<string>()), Times.Once());
             _userManager.Verify(x => x.ResetPasswordAsync(user, viewModel.Token, viewModel.Password), Times.Once());
+        }
+        #endregion
+        #region Profile Endpoints
+        [Test]
+        public async Task Profile_UserIsNull_RedirectToLogin()
+        {
+            //assert 
+            _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>()))!.ReturnsAsync(default(IdentityUser));
+
+            //act
+            var result =  await _accountController.Profile() as RedirectToActionResult;
+
+            //Assert
+            Assert.That(result?.ActionName, Is.EqualTo("Login"));
+            _userManager.Verify(x => x.GetRolesAsync(It.IsAny<IdentityUser>()), Times.Never());
+        }
+        [Test]
+        public async Task Profile_ViewBagHasAJaxLink_ReturnView()
+        {
+            //arrange
+            IdentityUser user = new IdentityUser();
+           
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+
+            var url = new Mock<IUrlHelper>();
+            url.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/testAction/dude");
+            _accountController.Url = url.Object;
+
+            //act
+            await _accountController.Profile();
+            var viewBagValue = _accountController.ViewBag.AjaxLink;
+
+            //assert 
+            Assert.That(viewBagValue, Is.EqualTo("/test/testAction/dude"));
+            url.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Once());
+        }
+        [Test]
+        public async Task Profile_EverythingWorksSmoth_ReturnView()
+        {
+            //arrange
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.GetRolesAsync(It.IsAny<IdentityUser>())).ReturnsAsync(new List<string>{ "Admin" });
+            var url = new Mock<IUrlHelper>();
+            _accountController.Url = url.Object;
+
+            //act
+            var result = (await _accountController.Profile() as ViewResult)?.ViewData.Model as ProfileViewModel ?? new();
+
+            //Assert
+            Assert.That(result.UserName, Is.EqualTo("TestName"));
+            Assert.That(result.Email, Is.EqualTo("TestEmail"));
+            Assert.That(result.Phone, Is.EqualTo("TestPhone"));
+            Assert.That(result.UserRole, Is.EqualTo("Admin"));
+        }
+        [Test]
+        public async Task Profile_RoleAdminListIsEmpty_ReturnView()
+        {
+            //arrange
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.GetRolesAsync(It.IsAny<IdentityUser>())).ReturnsAsync(new List<string>());
+            var url = new Mock<IUrlHelper>();
+            _accountController.Url = url.Object;
+
+            //act
+            var result = (await _accountController.Profile() as ViewResult)?.ViewData.Model as ProfileViewModel ?? new();
+
+            //Assert
+            Assert.That(result.UserRole, Is.EqualTo("RoleNotFound"));
+        }
+        [Test]
+        public async Task UserChangePassword_ModelIsNotValid_ReturnBadRequest()
+        {
+            //assert
+            _accountController.ModelState.AddModelError("error", "custom error");
+
+            //act
+            var result =  await _accountController.UserChangePassword(new UserChangePassword()) as BadRequestObjectResult;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        [TestCase("")]
+        [TestCase(null)]
+        public async Task UserChangePassword_ModelPropertiesAreNullOrEmpty_ReturnBadRequest(string password)
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = password,
+                NewPassword = password,
+                ConfirmPassword = password
+            };
+
+            //act
+            var result = await _accountController.UserChangePassword(new UserChangePassword()) as BadRequestObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(obj.Error, Is.EqualTo("FieldsRequired"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task UserChangePassword_UserIsNull_ReturnNotFound()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "TestTest",
+                ConfirmPassword = "TestTest"
+            };
+            //act
+            var result = await _accountController.UserChangePassword(model) as NotFoundObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+            Assert.That(obj.Error, Is.EqualTo("UserNotFound"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(),It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task UserChangePassword_OldPasswordNotMatching_ReturnBadRequest()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "TestTest",
+                ConfirmPassword = "TestTest"
+            };
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>())).ReturnsAsync(false);
+
+            //act
+            var result = await _accountController.UserChangePassword(model) as BadRequestObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(obj.Error, Is.EqualTo("NotMatch"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(user, "test"), Times.Once());
+            _userManager.Verify(x => x.ChangePasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task UserChangePassword_WeakPassword_ReturnBadRequest()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "TestTest",
+                ConfirmPassword = "TestTest"
+            };
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            //act
+            var result = await _accountController.UserChangePassword(model) as BadRequestObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(obj.Error, Is.EqualTo("WeakPassword"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(user, "test"), Times.Once());
+            _userManager.Verify(x => x.ChangePasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task UserChangePassword_PasswordsDontMatch_ReturnBadRequest()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "Test@2",//pass the integrity test
+                ConfirmPassword = "TestTest"//not matching
+            };
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            //act
+            var result = await _accountController.UserChangePassword(model) as BadRequestObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(obj.Error, Is.EqualTo("NotMatch"));
+            Assert.That(obj.Message, Is.EqualTo("Passwords don't match"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(user, "test"), Times.Once());
+            _userManager.Verify(x => x.ChangePasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task UserChangePassword_ChangingPasswordDidNotSuccededForUnknownReasons_ReturnConflict()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "Test@2",//pass the integrity test
+                ConfirmPassword = "Test@2"//pass passwords matching test
+            };
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>())).ReturnsAsync(true);
+            _userManager.Setup(x => x.ChangePasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(new IdentityResultMock(false));
+
+            //act
+            var result = await _accountController.UserChangePassword(model) as ConflictObjectResult;
+            var obj = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status409Conflict));
+            Assert.That(obj.Error, Is.EqualTo("UnknownReason"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(user, "test"), Times.Once());
+            _userManager.Verify(x => x.ChangePasswordAsync(user, model.OldPassword, model.NewPassword), Times.Once());
+        }
+        [Test]
+        public async Task UserChangePassword_Succeded_ReturnOk()
+        {
+            //assert
+            UserChangePassword model = new UserChangePassword()
+            {
+                OldPassword = "test",
+                NewPassword = "Test@2",//pass the integrity test
+                ConfirmPassword = "Test@2"//pass passwords matching test
+            };
+            IdentityUser user = new IdentityUser()
+            {
+                UserName = "TestName",
+                Email = "TestEmail",
+                PhoneNumber = "TestPhone"
+            };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _userManager.Setup(x => x.CheckPasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>())).ReturnsAsync(true);
+            _userManager.Setup(x => x.ChangePasswordAsync(It.IsAny<IdentityUser>(), It.IsAny<string>(), It.IsAny<string>()))
+                        .ReturnsAsync(new IdentityResultMock(true));
+
+            //act
+            var result = await _accountController.UserChangePassword(model) as OkObjectResult;
+            var obj = result?.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(obj.Message, Is.EqualTo("Password changed succesfully!"));
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _userManager.Verify(x => x.CheckPasswordAsync(user, "test"), Times.Once());
+            _userManager.Verify(x => x.ChangePasswordAsync(user, model.OldPassword, model.NewPassword), Times.Once());
         }
         #endregion
     }
