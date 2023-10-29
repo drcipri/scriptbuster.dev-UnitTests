@@ -129,6 +129,27 @@ namespace scriptbuster.dev_UnitTests
             _blogRepository.Verify(x => x.CreateAuthor(It.IsAny<BlogAuthor>()), Times.Once());
         }
         [Test]
+        public async Task AddAuthor_AuthorCouldNotBeAddedUnknownReason_ReturnBadRequest()
+        {
+            //arrange
+            var author = new BlogAuthorBindingTarget();
+            _statusService.Setup(x => x.GetUserId()).Returns("userId");
+            _formFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            long size = 4 * 1024 * 1024;//4 mb pass the validation
+            _formFile.SetupGet(x => x.Length).Returns(size);
+            _blogRepository.Setup(x => x.CreateAuthor(It.IsAny<BlogAuthor>())).ThrowsAsync(new Exception());
+
+            //act
+            var result = await _blogController.AddAuthor(_formFile.Object, author) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //act
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("SomethingWentWrong"));
+            _statusService.Verify(x => x.GetUserId(), Times.Once());
+            _blogRepository.Verify(x => x.CreateAuthor(It.IsAny<BlogAuthor>()), Times.Once());
+        }
+        [Test]
         public async Task AddAuthor_Works_ReturnOk()
         {
             //arrange
@@ -156,6 +177,104 @@ namespace scriptbuster.dev_UnitTests
             _statusService.Verify(x => x.GetUserId(), Times.Once());
             _blogRepository.Verify(x => x.CreateAuthor(It.IsAny<BlogAuthor>()), Times.Once());
         }
+        #endregion
+        #region Update Author
+        [Test]
+        public async Task UpdateAuthor_ModelStateIsNotValid_ReturnBadRequest()
+        {
+            //arrange 
+            var author = new BlogAuthor();
+            _blogController.ModelState.AddModelError("error", "Test Error");
+
+            //act
+            var result = await _blogController.UpdateAuthor(default!, author) as BadRequestObjectResult;
+            var modelState = result?.Value as ModelStateDictionary ?? new();
+            //assert 
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            _blogRepository.Verify(x => x.UpdateAuthor(It.IsAny<BlogAuthor>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateAuthor_ImageContentTypeIsNotAnImage_ReturnBadRequest()
+        {
+            //arrange
+            var author = new BlogAuthor();
+            _formFile.SetupGet(x => x.ContentType).Returns("application/test");
+
+            //act
+            var result = await _blogController.UpdateAuthor(_formFile.Object, author) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //act
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("PNG-JPEG-Only"));
+            _blogRepository.Verify(x => x.UpdateAuthor(It.IsAny<BlogAuthor>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateAuthor_ImageToBig_ReturnBadRequest()
+        {
+            //arrange
+            var author = new BlogAuthor();
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            long size = 10 * 1024 * 1024;//10mb
+            _formFile.SetupGet(x => x.Length).Returns(size);
+
+            //act
+            var result = await _blogController.UpdateAuthor(_formFile.Object, author) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //act
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("BigSize"));
+            _blogRepository.Verify(x => x.UpdateAuthor(It.IsAny<BlogAuthor>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateAuthor_AuthorCouldNotBeUpdatedUnknownReason_ReturnBadRequest()
+        {
+            //arrange
+            var author = new BlogAuthor();
+            _formFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            long size = 4 * 1024 * 1024;//4 mb pass the validation
+            _formFile.SetupGet(x => x.Length).Returns(size);
+            _blogRepository.Setup(x => x.UpdateAuthor(It.IsAny<BlogAuthor>())).ThrowsAsync(new Exception());
+
+            //act
+            var result = await _blogController.UpdateAuthor(_formFile.Object, author) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //act
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("SomethingWentWrong"));
+            _blogRepository.Verify(x => x.UpdateAuthor(It.IsAny<BlogAuthor>()), Times.Once());
+        }
+        [Test]
+        public async Task UpdateAuthor_Works_ReturnOk()
+        {
+            //arrange
+            var author = new BlogAuthor()
+            {
+                Id=1,
+                UserId = "userIdTest",
+                Proffesion = "TestProf",
+                FullName  = "TestFullName",
+                Quote = "TestQuote"
+            };
+            _formFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            long size = 4 * 1024 * 1024;//4 mb pass the validation
+            _formFile.SetupGet(x => x.Length).Returns(size);
+
+            //act
+            var result = await _blogController.UpdateAuthor(_formFile.Object, author) as OkObjectResult;
+            var model = result?.Value as BlogAuthor ?? new();
+
+            //act
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            Assert.That(model.Id, Is.EqualTo(1));
+            Assert.That(model.UserId, Is.EqualTo("userIdTest"));
+            Assert.That(model.FullName, Is.EqualTo("TestFullName"));
+            Assert.That(model.Proffesion, Is.EqualTo("TestProf"));
+            Assert.That(model.Quote, Is.EqualTo("TestQuote"));
+            _blogRepository.Verify(x => x.UpdateAuthor(It.IsAny<BlogAuthor>()), Times.Once());
+        }
+        #endregion
     }
-    #endregion
 }
