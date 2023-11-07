@@ -11,7 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Messages
 {
     [TestFixture]
     internal class AdminMessagesControllerTestsForSecondForm

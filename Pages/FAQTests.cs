@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Pages
 {
     [TestFixture]
     internal class FAQTests

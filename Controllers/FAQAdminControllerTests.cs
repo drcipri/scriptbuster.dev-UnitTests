@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using System.Security.Cryptography.X509Certificates;
 using scriptbuster.dev.Infrastructure;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class FAQAdminControllerTests
@@ -49,7 +49,7 @@ namespace scriptbuster.dev_UnitTests
                     Answer = "Test Answer 3"
                 }
             };
-            foreach(var question in list)
+            foreach (var question in list)
             {
                 yield return question;
             }
@@ -63,12 +63,12 @@ namespace scriptbuster.dev_UnitTests
             _repFAQ.Setup(x => x.GetAllFAQs()).Returns(MockGetAllFAQs());
 
             //act
-            var result =  (await _controller.FaqPanel() as ViewResult)?.ViewData.Model as List<FAQ> ?? new();
+            var result = (await _controller.FaqPanel() as ViewResult)?.ViewData.Model as List<FAQ> ?? new();
 
             //assert
             Assert.Multiple(() =>
             {
-                Assert.That(result[0].Id , Is.EqualTo(1));
+                Assert.That(result[0].Id, Is.EqualTo(1));
                 Assert.That(result[0].Question, Is.EqualTo("Test Question 1"));
                 Assert.That(result[0].Answer, Is.EqualTo("Test Answer 1"));
                 Assert.That(result[2].Id, Is.EqualTo(3));
@@ -107,7 +107,7 @@ namespace scriptbuster.dev_UnitTests
         public async Task AddQuestion_Works_RedirectTOFaqPanelAction()
         {
             //arrange   
-            var faq = new FAQBindingTarget 
+            var faq = new FAQBindingTarget
             {
                 Question = "Test Question",
                 Answer = "Test Answer"
@@ -154,7 +154,7 @@ namespace scriptbuster.dev_UnitTests
             //arrange   
             var faq = new FAQ
             {
-                Id= 1,
+                Id = 1,
                 Question = "Test Question",
                 Answer = "Test Answer"
             };

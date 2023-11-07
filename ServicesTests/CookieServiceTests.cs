@@ -12,7 +12,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.ServicesTests
 {
     [TestFixture]
     internal class CookieServiceTests
@@ -258,7 +258,7 @@ namespace scriptbuster.dev_UnitTests
         }
 
         #endregion
-      
+
         #region CookieExist
         [Test]
         public void CookieExist_RequestCookieCollectionIsNull_ThrowException()
@@ -364,7 +364,7 @@ namespace scriptbuster.dev_UnitTests
         public void GetAllCurrentRequestCookies_ItWorks()
         {
             //act
-            var result =_cookieService.GetAllCurrentRequestCookies();
+            var result = _cookieService.GetAllCurrentRequestCookies();
             //assert
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Count, Is.EqualTo(0));

@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http.Extensions;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Messages
 {
     [TestFixture]
     internal class AdminMessagesControllerTests
@@ -25,7 +25,7 @@ namespace scriptbuster.dev_UnitTests
         private Mock<IHttpContextAccessor> _mockHttpContextAccessor;
         private Mock<LinkGenerator> _linkGenerator;
         private Mock<HttpContext> _httpContextMock;
-        private Mock<HttpRequest> _httpRequestMock; 
+        private Mock<HttpRequest> _httpRequestMock;
         private AdminMessagesController _controller;
         [SetUp]
         public void SetUp()
@@ -35,11 +35,11 @@ namespace scriptbuster.dev_UnitTests
             _mockServiceProvider = new Mock<IServiceProvider>();
             _mockHttpContextAccessor = new Mock<IHttpContextAccessor>();
             _mockProjectMessages = new Mock<IRepositoryProjectMessage>();
-            _httpRequestMock= new Mock<HttpRequest>();
-            _httpContextMock= new Mock<HttpContext>();
+            _httpRequestMock = new Mock<HttpRequest>();
+            _httpContextMock = new Mock<HttpContext>();
             _linkGenerator = new Mock<LinkGenerator>();
-            _controller = new AdminMessagesController(_mockRepMessages.Object, _mockLogger.Object, 
-                                                      _mockServiceProvider.Object,_mockProjectMessages.Object);
+            _controller = new AdminMessagesController(_mockRepMessages.Object, _mockLogger.Object,
+                                                      _mockServiceProvider.Object, _mockProjectMessages.Object);
         }
         public async IAsyncEnumerable<Message> MockGetMessagesByDescending()
         {
@@ -87,13 +87,13 @@ namespace scriptbuster.dev_UnitTests
                 },
             };
 
-            foreach(var message in messagesList.OrderByDescending(x => x.Id))
+            foreach (var message in messagesList.OrderByDescending(x => x.Id))
             {
                 yield return message;
             }
             await Task.CompletedTask;
         }
-       
+
         public async IAsyncEnumerable<Message> MockSearch()
         {
             var messagesList = new List<Message>
@@ -232,7 +232,7 @@ namespace scriptbuster.dev_UnitTests
                 Assert.That(messagesList[3].Email, Is.EqualTo("foo@email.com"));
             });
         }
-        
+
         [Test]
         public async Task MessagesPanel_CanGetUnreadMessagesAndTotalMessagesCount_ReturnView()
         {
@@ -423,7 +423,7 @@ namespace scriptbuster.dev_UnitTests
             _httpRequestMock.Setup(x => x.Host).Returns(new HostString("localhost", 5000));
 
             //act
-            var result = (await _controller.SearchMessages("test",2) as ViewResult)?.ViewData.Model as MessagesPanelViewModel ?? new();
+            var result = (await _controller.SearchMessages("test", 2) as ViewResult)?.ViewData.Model as MessagesPanelViewModel ?? new();
             var listMessages = result.Messages.ToList();
 
             //assert
@@ -465,6 +465,6 @@ namespace scriptbuster.dev_UnitTests
         }
         #endregion
 
-      
+
     }
 }

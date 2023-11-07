@@ -11,19 +11,19 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class AboutMeAdminControllerTests
     {
-        private Mock<IRepositoryAboutMePage> _mockRepo; 
+        private Mock<IRepositoryAboutMePage> _mockRepo;
         private AboutMeAdminController _controller;
         [SetUp]
-        public void SetUp() 
+        public void SetUp()
         {
-            _mockRepo = new Mock<IRepositoryAboutMePage>(); 
+            _mockRepo = new Mock<IRepositoryAboutMePage>();
             _controller = new AboutMeAdminController(_mockRepo.Object);
-        } 
+        }
         [Test]
         public async Task AboutMePanel_CanGetAboutMePageData_ReturnItsView()
         {

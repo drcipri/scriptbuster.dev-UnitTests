@@ -7,11 +7,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.ServicesTests
 {
     public class TestClass
     {
-        public string? TestProperty { get; set;}
+        public string? TestProperty { get; set; }
     }
     [TestFixture]
     internal class SessionService_UnitTests
@@ -22,11 +22,11 @@ namespace scriptbuster.dev_UnitTests
         private Mock<ISession> _session;
         private SessionService _sessionService;
         [SetUp]
-        public void SetUp() 
+        public void SetUp()
         {
-            _contextAccessor= new Mock<IHttpContextAccessor>();
-            _logger= new Mock<ILogger<SessionService>>();
-            _session= new Mock<ISession>();
+            _contextAccessor = new Mock<IHttpContextAccessor>();
+            _logger = new Mock<ILogger<SessionService>>();
+            _session = new Mock<ISession>();
 
             _mockHttpContext = new Mock<HttpContext>();
 
@@ -61,14 +61,14 @@ namespace scriptbuster.dev_UnitTests
             _sessionService = new SessionService(_contextAccessor.Object, _logger.Object);
 
             //assert
-            Assert.ThrowsAsync<NullReferenceException>(() => _sessionService.AddObject<TestClass>("Test", new TestClass()));
+            Assert.ThrowsAsync<NullReferenceException>(() => _sessionService.AddObject("Test", new TestClass()));
         }
         [Test]
         public async Task AddObject_Works()
         {
             await _sessionService.AddObject("TestKey", new TestClass());
 
-            _session.Verify(x => x.Set(It.Is<string>(x => x == "TestKey"), It.IsAny<byte[]>()),Times.Once()); 
+            _session.Verify(x => x.Set(It.Is<string>(x => x == "TestKey"), It.IsAny<byte[]>()), Times.Once());
         }
         #endregion
 
@@ -79,7 +79,7 @@ namespace scriptbuster.dev_UnitTests
         public void AddInt32_KeyIsNullOrEmpty_ThrowsException(string key)
         {
             //assert
-            Assert.ThrowsAsync<ArgumentNullException>(() => _sessionService.AddInt32(key,2));
+            Assert.ThrowsAsync<ArgumentNullException>(() => _sessionService.AddInt32(key, 2));
         }
         [Test]
         public void AddInt32_ISessionIsNull_ThrowsException()
@@ -90,7 +90,7 @@ namespace scriptbuster.dev_UnitTests
             _sessionService = new SessionService(_contextAccessor.Object, _logger.Object);
 
             //assert
-            Assert.ThrowsAsync<NullReferenceException>(() => _sessionService.AddInt32("TestKey",2));
+            Assert.ThrowsAsync<NullReferenceException>(() => _sessionService.AddInt32("TestKey", 2));
         }
         [Test]
         public async Task AddInt32_Works()
@@ -152,12 +152,12 @@ namespace scriptbuster.dev_UnitTests
         [Test]
         public async Task GetObject_Works()
         {
-             await _sessionService.GetObject<TestClass>("Test");
-           
+            await _sessionService.GetObject<TestClass>("Test");
+
             byte[] outTest;
 
             //assert
-            _session.Verify(x => x.TryGetValue(It.Is<string>(x => x == "Test"),out outTest!), Times.Once());
+            _session.Verify(x => x.TryGetValue(It.Is<string>(x => x == "Test"), out outTest!), Times.Once());
         }
         #endregion
 
@@ -270,7 +270,7 @@ namespace scriptbuster.dev_UnitTests
         {
             //act
             _sessionService.ClearSession();
-            
+
             //assert
             _session.Verify(x => x.Clear(), Times.Once());
         }

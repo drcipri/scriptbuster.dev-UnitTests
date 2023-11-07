@@ -14,13 +14,13 @@ using scriptbuster.dev.Infrastructure.Services;
 using System.Net.Mail;
 using System.Net;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.ServicesTests
 {
     [TestFixture]
     internal class EmailSenderTests
     {
         private Mock<ILogger<EmailSender>> _logger;
-        private Mock<IOptions<EmailSettings>>_settings;
+        private Mock<IOptions<EmailSettings>> _settings;
         private Mock<ISmtpClientWrapper> _smtpClient;
         private EmailSender _sender;
         [SetUp]
@@ -72,6 +72,6 @@ namespace scriptbuster.dev_UnitTests
             Assert.That(credentials.UserName, Is.EqualTo("admin@test.com"));
             Assert.That(credentials.Password, Is.EqualTo("passwordTest"));
         }
-        
+
     }
 }

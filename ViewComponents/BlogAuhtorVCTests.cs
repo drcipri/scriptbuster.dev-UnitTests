@@ -13,7 +13,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.ViewComponents
 {
     [TestFixture]
     internal class BlogAuhtorVCTests
@@ -23,14 +23,15 @@ namespace scriptbuster.dev_UnitTests
         private Mock<IHttpContextAccessor> _accesor;
         private Mock<IUrlHelper> _urlHelper;
         private BlogAuthorVC _blogAuthorVC;
-        [SetUp] public void SetUp() 
+        [SetUp]
+        public void SetUp()
         {
             _blogRepository = new Mock<IBlogRepository>();
             _authStatus = new Mock<IAuthStatusService>();
             _accesor = new Mock<IHttpContextAccessor>();
             _urlHelper = new Mock<IUrlHelper>();
             _blogAuthorVC = new BlogAuthorVC(_blogRepository.Object, _authStatus.Object, _accesor.Object);
-            
+
             //since i need this in every test i put this in the setup
             _blogAuthorVC.Url = _urlHelper.Object;
             _urlHelper.SetupSequence(x => x.Action(It.IsAny<UrlActionContext>()))
@@ -71,9 +72,9 @@ namespace scriptbuster.dev_UnitTests
         {
 
             //act
-            var viewDataDictionary =  (await _blogAuthorVC.InvokeAsync() as ViewViewComponentResult)?.ViewData;
+            var viewDataDictionary = (await _blogAuthorVC.InvokeAsync() as ViewViewComponentResult)?.ViewData;
             var links = viewDataDictionary!["AuthorLinks"] as AuthorLinks ?? new();
-            
+
 
             //assert
             Assert.That(links.AddAuthorLink, Is.EqualTo("test.com/pathTest1"));
@@ -97,7 +98,7 @@ namespace scriptbuster.dev_UnitTests
             var author = model.Author;
 
             //assert
-            Assert.That(author.Id , Is.EqualTo(1));
+            Assert.That(author.Id, Is.EqualTo(1));
             Assert.That(author.FullName, Is.EqualTo("TestName"));
             Assert.That(author.Proffesion, Is.EqualTo("TestProffesion"));
             Assert.That(author.UserId, Is.EqualTo("TestUserId"));

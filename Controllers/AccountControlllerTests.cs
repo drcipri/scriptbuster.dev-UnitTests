@@ -24,7 +24,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class AccountControlllerTests
@@ -68,9 +68,9 @@ namespace scriptbuster.dev_UnitTests
             mockPrincipal.SetupGet(x => x.Identity).Returns(mockIdentity.Object);
             _context.SetupGet(x => x.User).Returns(mockPrincipal.Object);
             _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
-            
+
             //act
-            var result =  _accountController.Login(default) as RedirectToPageResult;
+            var result = _accountController.Login(default) as RedirectToPageResult;
 
             //arrange
             Assert.That(result?.PageName, Is.EqualTo("/Admin"));
@@ -117,9 +117,9 @@ namespace scriptbuster.dev_UnitTests
             mockConnection.Setup(x => x.RemoteIpAddress).Returns(IPAddress.Parse("192.168.1.1"));
             _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
             _context.Setup(x => x.Connection).Returns(mockConnection.Object);
-            
+
             byte[] logginAttempts = Encoding.ASCII.GetBytes("7");
-            _cache.Setup(x => x.GetAsync(It.IsAny<string>(),default)).ReturnsAsync(logginAttempts);
+            _cache.Setup(x => x.GetAsync(It.IsAny<string>(), default)).ReturnsAsync(logginAttempts);
 
             var model = new LoginViewModel();
             //act
@@ -172,10 +172,10 @@ namespace scriptbuster.dev_UnitTests
             //arrange
             var user = new AplicationUser { UserName = "Test" };
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>()))!.ReturnsAsync(user);
-           
+
             _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, false))
                           .ReturnsAsync(new SignInResultMock(false));
-            
+
             var mockConnection = new Mock<ConnectionInfo>();
             mockConnection.Setup(x => x.RemoteIpAddress).Returns(IPAddress.Parse("192.168.1.1"));
             _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
@@ -200,7 +200,7 @@ namespace scriptbuster.dev_UnitTests
             Assert.That(result.ViewName, Is.EqualTo("Login"));
             _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
             _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
-            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password),false, false),Times.Once());
+            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, false), Times.Once());
         }
         [Test]
         public async Task LoginUser_Succeded_RedirectToAdminPageReturnUrlIsNull()
@@ -289,7 +289,7 @@ namespace scriptbuster.dev_UnitTests
             mockIUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("testHost/test-controller/test-action");
             //act
             _accountController.ForgotPassword();
-            string ajaxLink = _accountController.ViewBag.AjaxLink;  
+            string ajaxLink = _accountController.ViewBag.AjaxLink;
             //assert 
             //check if contains the route of the target endpoint
             StringAssert.Contains("test-controller", ajaxLink);
@@ -304,7 +304,7 @@ namespace scriptbuster.dev_UnitTests
             //act
             var result = await _accountController.SendResetPasswordLink(default!) as BadRequestObjectResult;
             var model = result?.Value as ModelStateDictionary ?? new();
-            
+
             //assert
             Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
             _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Never());
@@ -361,7 +361,7 @@ namespace scriptbuster.dev_UnitTests
             StringAssert.Contains("a message was sent to this email address", model.Message);
             _session.Verify(x => x.GetInt32(It.IsAny<string>()), Times.Once());
             _userManager.Verify(x => x.FindByEmailAsync("test@email.com"), Times.Once());
-          
+
             _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.IsAny<AplicationUser>()), Times.Never());
             _emailSender.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
         }
@@ -394,7 +394,7 @@ namespace scriptbuster.dev_UnitTests
             StringAssert.Contains("a message was sent to this email address", model.Message);
 
             _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.Is<AplicationUser>(x => x == user)), Times.Once());
-            Assert.ThrowsAsync<Exception>(() =>_emailSender.Object.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), "test exception");
+            Assert.ThrowsAsync<Exception>(() => _emailSender.Object.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), "test exception");
         }
         [Test]
         public async Task SendeResetPasswordLink_EverythingWorks_ReturnOkResult()
@@ -432,18 +432,18 @@ namespace scriptbuster.dev_UnitTests
             _accountController.ModelState.AddModelError("error", "Test Message");
 
             //act
-            var result = await _accountController.ResetPassword("","") as RedirectToPageResult;
+            var result = await _accountController.ResetPassword("", "") as RedirectToPageResult;
 
             //assert
             Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
             _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Never());
         }
         [Test]
-        [TestCase("","test@email.com")]
+        [TestCase("", "test@email.com")]
         [TestCase(null, "test@email.com")]
         [TestCase("test", "")]
         [TestCase("test", null)]
-        [TestCase("test","testemail.com")]
+        [TestCase("test", "testemail.com")]
         public async Task ResetPassword_TokenOrEmailIsNullOrEmpty_ReturnRedirectToPage(string token, string email)
         {
             //act
@@ -462,8 +462,8 @@ namespace scriptbuster.dev_UnitTests
             //assert
             Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
             _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
-            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(), 
-                                                            It.IsAny<string>(), It.IsAny<string>(), 
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(),
+                                                            It.IsAny<string>(), It.IsAny<string>(),
                                                             It.IsAny<string>()), Times.Never());
         }
         [Test]
@@ -480,8 +480,8 @@ namespace scriptbuster.dev_UnitTests
             //assert
             Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
             _userManager.Verify(x => x.FindByEmailAsync("test@email.com"), Times.Once());
-            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(), 
-                                                            It.IsAny<string>(), It.IsAny<string>(), 
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(),
+                                                            It.IsAny<string>(), It.IsAny<string>(),
                                                             It.IsAny<string>()), Times.Once());
             _userManager.Verify(x => x.GeneratePasswordResetTokenAsync(It.IsAny<AplicationUser>()), Times.Never());
         }
@@ -517,8 +517,8 @@ namespace scriptbuster.dev_UnitTests
         public async Task ChangePassword_EmailOrTokenAreNullOREmpty_RedirectToPageClientInfo(string token, string email)
         {
             //arrange
-            var viewModel = new ChangePasswordViewModel 
-            { 
+            var viewModel = new ChangePasswordViewModel
+            {
                 Email = email,
                 Token = token
             };
@@ -555,7 +555,7 @@ namespace scriptbuster.dev_UnitTests
         [Test]
         public async Task ChangePassword_UserIsNull_RedirectToClientInfo()
         {
-            
+
             //arrange
             var viewModel = new ChangePasswordViewModel
             {
@@ -571,8 +571,8 @@ namespace scriptbuster.dev_UnitTests
             //assert
             Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
             _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
-            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), 
-                                                            It.IsAny<string>(),It.IsAny<string>()), Times.Never());
+            _userManager.Verify(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(),
+                                                            It.IsAny<string>(), It.IsAny<string>()), Times.Never());
         }
         [Test]
         public async Task ChangePassword_TokenIsExpired_RedirectToClientInfo()
@@ -587,7 +587,7 @@ namespace scriptbuster.dev_UnitTests
             };
             var user = new AplicationUser();
             _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(), 
+            _userManager.Setup(x => x.VerifyUserTokenAsync(It.IsAny<AplicationUser>(),
                          It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                         .ReturnsAsync(false);
             //act
@@ -596,8 +596,8 @@ namespace scriptbuster.dev_UnitTests
             //assert
             Assert.That(result!.PageName, Is.EqualTo("/ClientInfo"));
             _userManager.Verify(x => x.FindByEmailAsync(It.IsAny<string>()), Times.Once());
-            _userManager.Verify(x => x.VerifyUserTokenAsync(user, 
-                                                            It.IsAny<string>(), It.IsAny<string>(), 
+            _userManager.Verify(x => x.VerifyUserTokenAsync(user,
+                                                            It.IsAny<string>(), It.IsAny<string>(),
                                                             It.IsAny<string>()), Times.Once());
             _userManager.Verify(x => x.ResetPasswordAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never());
         }
@@ -736,7 +736,7 @@ namespace scriptbuster.dev_UnitTests
             _userManager.Setup(x => x.FindByEmailAsync(It.IsAny<string>()))!.ReturnsAsync(default(AplicationUser));
 
             //act
-            var result =  await _accountController.Profile() as RedirectToActionResult;
+            var result = await _accountController.Profile() as RedirectToActionResult;
 
             //Assert
             Assert.That(result?.ActionName, Is.EqualTo("Login"));
@@ -747,7 +747,7 @@ namespace scriptbuster.dev_UnitTests
         {
             //arrange
             AplicationUser user = new AplicationUser();
-           
+
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
 
             var url = new Mock<IUrlHelper>();
@@ -773,7 +773,7 @@ namespace scriptbuster.dev_UnitTests
                 PhoneNumber = "TestPhone"
             };
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>())).ReturnsAsync(user);
-            _userManager.Setup(x => x.GetRolesAsync(It.IsAny<AplicationUser>())).ReturnsAsync(new List<string>{ "Admin" });
+            _userManager.Setup(x => x.GetRolesAsync(It.IsAny<AplicationUser>())).ReturnsAsync(new List<string> { "Admin" });
             var url = new Mock<IUrlHelper>();
             _accountController.Url = url.Object;
 
@@ -814,7 +814,7 @@ namespace scriptbuster.dev_UnitTests
             _accountController.ModelState.AddModelError("error", "custom error");
 
             //act
-            var result =  await _accountController.UserChangePassword(new UserChangePassword()) as BadRequestObjectResult;
+            var result = await _accountController.UserChangePassword(new UserChangePassword()) as BadRequestObjectResult;
 
             //assert
             Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
@@ -860,7 +860,7 @@ namespace scriptbuster.dev_UnitTests
             Assert.That(result?.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
             Assert.That(obj.Error, Is.EqualTo("UserNotFound"));
             _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
-            _userManager.Verify(x => x.CheckPasswordAsync(It.IsAny<AplicationUser>(),It.IsAny<string>()), Times.Never());
+            _userManager.Verify(x => x.CheckPasswordAsync(It.IsAny<AplicationUser>(), It.IsAny<string>()), Times.Never());
         }
         [Test]
         public async Task UserChangePassword_OldPasswordNotMatching_ReturnBadRequest()
@@ -1022,7 +1022,7 @@ namespace scriptbuster.dev_UnitTests
 
     //i could not mock SignInResult so i had to use inheritance to change the succeded value.
     //which could be set only in an inheritance tree.
-    public class SignInResultMock: Microsoft.AspNetCore.Identity.SignInResult
+    public class SignInResultMock : Microsoft.AspNetCore.Identity.SignInResult
     {
         public SignInResultMock(bool succedValue)
         {
@@ -1046,7 +1046,7 @@ namespace scriptbuster.dev_UnitTests
         {
             return "localTest/test/link";
         }
-        
+
         [return: NotNullIfNotNull("contentPath")]
         public string? Content(string? contentPath)
         {

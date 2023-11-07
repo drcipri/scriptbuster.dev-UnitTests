@@ -11,7 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class VerifyEmailControllerTests
@@ -108,7 +108,7 @@ namespace scriptbuster.dev_UnitTests
         {
             //arraange
             _cookieService.Setup(x => x.CookieExist(It.IsAny<string>())).Returns(true);
-           
+
             //act
             var result = await _controller.SendEmailCode("test@test.com", "TestAccesKey") as BadRequestObjectResult;
             var value = result?.Value as ErrorResponse ?? new();
@@ -141,7 +141,7 @@ namespace scriptbuster.dev_UnitTests
         {
             //arrange
             _session.Setup(x => x.GetString(It.IsAny<string>())).ReturnsAsync("OriginalAccesKey");
-          
+
             //act
             var result = await _controller.SendEmailCode("test@test.com", "NotMatchingAccesKey") as UnauthorizedObjectResult;
             var value = result?.Value as ErrorResponse ?? new();
@@ -158,7 +158,7 @@ namespace scriptbuster.dev_UnitTests
             //arrange
             _emailSender.Setup(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ThrowsAsync(new Exception("Something went wrong"));
             _session.Setup(x => x.GetString(It.IsAny<string>())).ReturnsAsync("AccesKey");
-          
+
             //act
             var result = await _controller.SendEmailCode("test@test.com", "AccesKey") as OkObjectResult;
             var value = result?.Value as SuccesResponse ?? new();

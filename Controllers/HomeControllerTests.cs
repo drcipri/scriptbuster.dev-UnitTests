@@ -14,7 +14,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class HomeControllerTests
@@ -22,18 +22,18 @@ namespace scriptbuster.dev_UnitTests
         private Mock<IRepositoryHomePage> _mockRepositoryHome;
         private HomeController _controller;
         [SetUp]
-        public void SetUp() 
+        public void SetUp()
         {
             _mockRepositoryHome = new Mock<IRepositoryHomePage>();
             _controller = new HomeController(_mockRepositoryHome.Object);
-        } 
+        }
         [Test]
         public async Task Index_CanGetHomePageData_ReturnItsView()
         {
             //arrange
             _mockRepositoryHome.Setup(x => x.GetHomePageDataAsync()).ReturnsAsync(new HomePage
             {
-                Id= 1,
+                Id = 1,
                 FullName = "TestFullName",
                 Profession = "TestProffesion",
                 WebsiteIntro = "Welcome Test"
@@ -126,7 +126,7 @@ namespace scriptbuster.dev_UnitTests
             };
 
             //act
-           var result =  await _controller.UpdateHomePage(home) as RedirectToActionResult;
+            var result = await _controller.UpdateHomePage(home) as RedirectToActionResult;
 
             //assert
             Assert.That(result!.ActionName, Is.EqualTo("HomePanel"));
@@ -144,7 +144,7 @@ namespace scriptbuster.dev_UnitTests
                 Profession = "TestProffesion",
                 WebsiteIntro = "Test Intro"
             });
-          
+
             var moqForm = new Mock<IFormFile>();
             moqForm.Setup(x => x.ContentType).Returns("application/pdf");
             var home = new HomePanelViewModel
@@ -155,8 +155,8 @@ namespace scriptbuster.dev_UnitTests
 
 
             //act
-           var result = await _controller.UpdateHomePage(home) as ViewResult;
-           var model = result?.ViewData.Model as HomePanelViewModel ?? new();
+            var result = await _controller.UpdateHomePage(home) as ViewResult;
+            var model = result?.ViewData.Model as HomePanelViewModel ?? new();
 
             //assert
             Assert.Multiple(() =>
@@ -185,7 +185,7 @@ namespace scriptbuster.dev_UnitTests
             var moqForm = new Mock<IFormFile>();
             moqForm.Setup(x => x.ContentType).Returns("image/png");
             moqForm.Setup(x => x.Length).Returns(15 * 1024 * 1024);//15mb
-            
+
             var home = new HomePanelViewModel
             {
                 HomePage = new HomePage(),

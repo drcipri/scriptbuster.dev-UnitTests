@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Pages
 {
     [TestFixture]
     internal class AboutMeModelTests
@@ -31,7 +31,7 @@ namespace scriptbuster.dev_UnitTests
             var modelState = new ModelStateDictionary();
             var page = new AboutMeModel(mock.Object);
             page.PageContext.ViewData = new ViewDataDictionary(modelMetadataProvider, modelState);
-            
+
             //act
             await page.OnGet();
 
@@ -41,7 +41,7 @@ namespace scriptbuster.dev_UnitTests
                 Assert.That(page.AboutMe, Is.Not.Null);
                 Assert.That(page.AboutMe?.Id, Is.EqualTo(1));
                 Assert.That(page.AboutMe?.AboutMeDescription, Is.EqualTo("Test"));
-                Assert.That(page.AboutMe?.Proffesion , Is.EqualTo("Test"));
+                Assert.That(page.AboutMe?.Proffesion, Is.EqualTo("Test"));
 
                 Assert.That(page.ViewData["CurrentPage"], Is.EqualTo("AboutMe"));
             });

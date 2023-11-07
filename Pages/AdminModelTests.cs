@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Pages
 {
     [TestFixture]
     internal class AdminModelTests
@@ -23,7 +23,7 @@ namespace scriptbuster.dev_UnitTests
             mockProjects.Setup(x => x.GetTotalMessages()).ReturnsAsync(5);
             var mockFaq = new Mock<IRepositoryFAQ>();
             mockFaq.Setup(x => x.GetTotalFaqs()).ReturnsAsync(5);
-         
+
             var model = new AdminModel(mockFaq.Object, mockMessages.Object, mockProjects.Object);
             //act
             await model.OnGet();

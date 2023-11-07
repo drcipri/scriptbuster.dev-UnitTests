@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.ServicesTests
 {
     [TestFixture]
     internal class CodeGeneratorServiceTests
@@ -74,7 +74,7 @@ namespace scriptbuster.dev_UnitTests
             var codeGenerator = new CodeGenerator(mock.Object);
 
             //act
-            var result =  codeGenerator.GenerateApiKey();
+            var result = codeGenerator.GenerateApiKey();
 
             //assert
             Assert.That(result, Is.Not.Null);

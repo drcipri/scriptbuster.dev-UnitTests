@@ -13,18 +13,18 @@ using scriptbuster.dev.Services.EmailService;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace scriptbuster.dev_UnitTests
+namespace scriptbuster.dev_UnitTests.Controllers
 {
     [TestFixture]
     internal class ContactControllerTests
     {
         private Mock<ILogger<ContactController>> _logger;
-        private Mock<IEmailSender> _mailSender;  
+        private Mock<IEmailSender> _mailSender;
         private Mock<IRepositoryMessage> _repositoryMessage;
         private Mock<IServiceProvider> _serviceProvider;
         private Mock<IRepositoryProjectMessage> _repositoryProjectMessage;
         private ContactController _controller;
-    
+
         [SetUp]
         public void SetUp()
         {
@@ -71,7 +71,7 @@ namespace scriptbuster.dev_UnitTests
             };
 
             //act
-            var result = (await _controller.SendMessage(message)) as RedirectToPageResult;
+            var result = await _controller.SendMessage(message) as RedirectToPageResult;
 
             //assert
             Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
@@ -111,7 +111,7 @@ namespace scriptbuster.dev_UnitTests
             };
 
             //act
-            var result = (await _controller.SendProjectMessage(message)) as RedirectToPageResult;
+            var result = await _controller.SendProjectMessage(message) as RedirectToPageResult;
 
             //assert
             Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
