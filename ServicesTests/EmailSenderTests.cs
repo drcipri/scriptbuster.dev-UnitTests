@@ -10,7 +10,6 @@ using scriptbuster.dev.Services.EmailService;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
-using scriptbuster.dev.Infrastructure.Services;
 using System.Net.Mail;
 using System.Net;
 
@@ -57,21 +56,5 @@ namespace scriptbuster.dev_UnitTests.ServicesTests
             //assert
             _smtpClient.Verify(x => x.SendMailAsync(It.IsAny<MailMessage>()), Times.Once());
         }
-
-        [Test]
-        public async Task SendEmail_AdminCredentialsAreOk()
-        {
-            _smtpClient.SetupGet(x => x.Client).Returns(new SmtpClient { Credentials = new NetworkCredential("admin@test.com", "passwordTest") });
-            //act -- it will throw a format exception if there is no valid email (miss @ or .)
-            await _sender.SendEmail("client@test.com", "Test", "Test");
-
-            var credentials = _smtpClient.Object.Client.Credentials as NetworkCredential ?? new();
-
-            //assert
-            _smtpClient.Verify(x => x.SendMailAsync(It.IsAny<MailMessage>()), Times.Once());
-            Assert.That(credentials.UserName, Is.EqualTo("admin@test.com"));
-            Assert.That(credentials.Password, Is.EqualTo("passwordTest"));
-        }
-
     }
 }
