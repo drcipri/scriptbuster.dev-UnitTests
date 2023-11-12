@@ -19,6 +19,7 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
+using Moq;
 
 namespace scriptbuster.dev_UnitTests.Controllers
 {
@@ -306,7 +307,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var model = new BlogArticleBindingTarget();
 
             //act
-            var result = await _blogController.PostArticle(default!, model, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, model, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
 
             //assert
             Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
@@ -320,7 +321,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var article = new BlogArticleBindingTarget();
 
             //act
-            var result = await _blogController.PostArticle(default!, article, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -340,7 +341,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _formFile.SetupGet(x => x.ContentType).Returns("application/test");
 
             //act
-            var result = await _blogController.PostArticle(_formFile.Object, article, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(_formFile.Object, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -363,7 +364,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _formFile.SetupGet(x => x.Length).Returns(size);
 
             //act
-            var result = await _blogController.PostArticle(_formFile.Object, article, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(_formFile.Object, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -388,7 +389,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _formFileArray = new IFormFile[] {mockSecondFormFile.Object,  _formFile.Object };
 
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, Enumerable.Empty<int>()) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -414,7 +415,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
 
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, Enumerable.Empty<int>()) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -424,6 +425,61 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Verify(x => x.GetUserAuthor(It.IsAny<string>()), Times.Once());
             _blogRepository.Verify(x => x.AddArticle(It.IsAny<BlogArticle>()), Times.Never());
         }
+
+        //tags validation TESTS HERE
+        [Test]
+        public async Task PostArticle_TagsAreEmpty_ReturnBadRequest()
+        {
+            _statusService.Setup(x => x.GetUserId()).Returns("user");
+            _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
+
+            var article = new BlogArticleBindingTarget()
+            {
+                Title = "TestTitle",
+                HtmlContent = "HtmlContentTest"
+            };
+            
+            var emptyTagCollection = new List<int>();
+
+            //act
+            var result = await _blogController.PostArticle(default!, article, default!, emptyTagCollection) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("TagRequired"));
+
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+            _htmlDocumentService.Verify(x => x.LoadHtml(It.IsAny<string>()), Times.Never());
+            _blogRepository.Verify(x => x.AddArticle(It.IsAny<BlogArticle>()), Times.Never());
+        }
+        [Test]
+        public async Task PostArticle_TagsDoesNotExistsInTheDatabase_ReturnBadRequest()
+            //unlikely to happen , only if the ids were altered on the client side
+        {
+            _statusService.Setup(x => x.GetUserId()).Returns("user");
+            _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
+
+            var article = new BlogArticleBindingTarget()
+            {
+                Title = "TestTitle",
+                HtmlContent = "HtmlContentTest"
+            };
+           
+            var tagsCollection = new List<int> { 1,2,3 };
+
+            //act
+            var result = await _blogController.PostArticle(default!, article, default!,tagsCollection) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("InvalidTags"));
+
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.AtLeast(3));//number of tags collection
+            _htmlDocumentService.Verify(x => x.LoadHtml(It.IsAny<string>()), Times.Never());
+            _blogRepository.Verify(x => x.AddArticle(It.IsAny<BlogArticle>()), Times.Never());
+        }
         [Test]
         public async Task PostArticle_NumberOfImagesAndNumberOfImgNodesDontMatch_ImagesAreNotSavedOnTheServer_ReturnOkResult()
             //in theory this should never happen in a real environment Only if HtmlDoc Was altered on ClientSide
@@ -431,6 +487,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
             //arrange
             _statusService.Setup(x => x.GetUserId()).Returns("user");
             _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 }; 
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
             
             var article = new BlogArticleBindingTarget();
            
@@ -446,7 +506,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes);
            
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as OkObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, mockTags) as OkObjectResult;
             var model = result!.Value as SuccesResponse ?? new();
 
             //assert
@@ -473,6 +533,9 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Title = "TestTitle",
                 HtmlContent = "HtmlContentTest"
             };
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
 
             //pass title validation
             _formFile.SetupGet(x => x.ContentType).Returns("image/png");
@@ -501,7 +564,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _directoryInfoWrapper.Setup(x => x.CreateSubdirectory(It.IsAny<string>())).Returns(subdirectoryMock.Object);
 
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as ObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, mockTags) as ObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -532,6 +595,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Title = "TestTitle",
                 HtmlContent = "HtmlContentTest"
             };
+            
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
 
             //pass title validation
             _formFile.SetupGet(x => x.ContentType).Returns("image/png");
@@ -562,7 +629,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
 
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as ObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, mockTags) as ObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -593,6 +660,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 HtmlContent = "HtmlContentTest"
             };
 
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
             //pass title validation
             _formFile.SetupGet(x => x.ContentType).Returns("image/png");
             var mockSecondFormFile = new Mock<IFormFile>();
@@ -618,7 +689,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _directoryInfoWrapper.Setup(x => x.CreateSubdirectory(It.IsAny<string>())).Returns(subdirectoryMock.Object);
 
             //act
-            var result = await _blogController.PostArticle(default!, article, _formFileArray!) as OkObjectResult;
+            var result = await _blogController.PostArticle(default!, article, _formFileArray!, mockTags) as OkObjectResult;
             var model = result!.Value as SuccesResponse ?? new();
 
             //assert
@@ -644,6 +715,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _statusService.Setup(x => x.GetUserId()).Returns("user");
             _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
 
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
             var article = new BlogArticleBindingTarget()
             {
                 Title = "TestTitle",
@@ -653,7 +728,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.AddArticle(It.IsAny<BlogArticle>())).ThrowsAsync(new InvalidOperationException("error"));
 
             //act
-            var result = await _blogController.PostArticle(default!, article, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, default!, mockTags) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -673,6 +748,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _statusService.Setup(x => x.GetUserId()).Returns("user");
             _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
 
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
             var article = new BlogArticleBindingTarget()
             {
                 Title = "TestTitle",
@@ -682,7 +761,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.AddArticle(It.IsAny<BlogArticle>())).ThrowsAsync(new Exception("error"));
 
             //act
-            var result = await _blogController.PostArticle(default!, article, default!) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, default!, mockTags) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
