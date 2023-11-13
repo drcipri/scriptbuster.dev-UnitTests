@@ -20,6 +20,9 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 using Moq;
+using Microsoft.AspNetCore.Mvc.Routing;
+using scriptbuster.dev.Services.SessionService;
+using Microsoft.Extensions.Configuration;
 
 namespace scriptbuster.dev_UnitTests.Controllers
 {
@@ -35,6 +38,11 @@ namespace scriptbuster.dev_UnitTests.Controllers
         private Mock<IDirectoryInfoWrapper> _directoryInfoWrapper;
         private BlogController _blogController;
 
+        //likeArticle
+        private Mock<ISessionService> _sessionMock;
+        private Mock<IEmailSender> _emailSenderMock;
+        private Mock<IConfiguration> _configurationMock;
+ 
         private IFormFile[]? _formFileArray;
         private Mock<IFormFile> _formFile;
 
@@ -50,6 +58,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _fileSystemService = new Mock<IFileSystemService>();
             _htmlDocumentService = new Mock<IHtmlDocumentService>();
             _directoryInfoWrapper = new Mock<IDirectoryInfoWrapper>();
+
+            _sessionMock = new Mock<ISessionService>();
+            _emailSenderMock = new Mock<IEmailSender>();
+            _configurationMock = new Mock<IConfiguration>();
 
             _blogController = new BlogController(_statusService.Object,
                                                  _blogRepository.Object,
@@ -775,6 +787,177 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Never());
         }
         #endregion
+        #region AddArticle and ReadArticle
+        [Test]
+        public void  AddArticle_CanGenerateArticleLinkForAjax_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            mockUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/post-article");
+            _blogController.Url = mockUrlHelper.Object;
 
+            //act
+            var result = (_blogController.AddArticle() as ViewResult)?.ViewData.Model as string;
+
+            //Assert
+            Assert.That(result, Is.EqualTo("/test/post-article"));
+        }
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task ReadArticle_ArticleIsLessOrEqualZero_ReturnClientInfo(int articleId)
+        {
+            //act
+            var result = await _blogController.ReadArticle(articleId) as RedirectToPageResult;
+
+            //arrange
+            Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task ReadArticle_ArticleIsNull_ReturnClientInfo()
+        {
+            //arrange
+            BlogArticle nullArticle = default!;
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(1)).ReturnsAsync(nullArticle!);
+
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+
+            //act
+            var result = await _blogController.ReadArticle(1) as RedirectToPageResult;
+
+            //arrange
+            Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            mockUrlHelper.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Never());
+        }
+        [Test]
+        public async Task ReadArticle_CanCreateTheLinkForLikeEndpointForTheAjaxAndReturnTheTheView_ReturnView()
+        {
+            BlogArticle article = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(1)).ReturnsAsync(article);
+
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            mockUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("test/like-link");
+            _blogController.Url = mockUrlHelper.Object;
+
+            //act
+            var result = await _blogController.ReadArticle(1) as ViewResult;
+            var model = result?.ViewData.Model as BlogArticle ?? new();
+            //arrange
+            Assert.That(model, Is.Not.Null);
+            Assert.That(result!.ViewData["UrlLikeLink"], Is.EqualTo("test/like-link"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            mockUrlHelper.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Once());
+        }
+
+        #endregion
+        #region Like Article
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task LikeArticle_ArticleIdIsZeroOrLess_ReturnBadRequest(int articleId)
+        {
+            //act
+            var result =  await _blogController.LikeArticle(articleId, 
+                                                _sessionMock.Object, 
+                                                _emailSenderMock.Object, 
+                                                _configurationMock.Object) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("ArticleNotFound"));
+
+            _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Never());
+            _sessionMock.Verify(x => x.GetString(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task LikeArticle_ArticleWasAlreadyLiked_ReturnBadRequest()
+        {
+            //arrange
+            string testString = "SessionTest";
+            _sessionMock.Setup(x => x.GetString(It.IsAny<string>())).ReturnsAsync(testString);
+            //act
+            var result = await _blogController.LikeArticle(1,
+                                                _sessionMock.Object,
+                                                _emailSenderMock.Object,
+                                                _configurationMock.Object) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("ArticleAlreadyLiked"));
+
+            _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task LikeArticle_SomethingWentWrongWhenCallingLikeArticle_ReturnUnprocessableEntity()
+        {
+            //act
+            var result = await _blogController.LikeArticle(1,
+                                                _sessionMock.Object,
+                                                _emailSenderMock.Object,
+                                                _configurationMock.Object) as UnprocessableEntityObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("Unknown Error"));
+
+            _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Once());
+            _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());   
+        }
+        [Test]
+        public async Task LikeArtic_ArticleBeenLiked_ReturnOk()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.LikeArticle(1)).ReturnsAsync(true);
+
+            //act
+            var result = await _blogController.LikeArticle(1,
+                                                _sessionMock.Object,
+                                                _emailSenderMock.Object,
+                                                _configurationMock.Object) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succesfully", model.Message);
+
+            _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Once());
+            _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());
+        }
+        [Test]
+        public async Task LikeArtic_SendingEmailTHrowsExceptionButWontBreakTheResponse_ReturnOk()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.LikeArticle(1)).ReturnsAsync(true);
+            _configurationMock.Setup(x => x["PersonalEmail:Email"]).Returns("test@test.com");
+            _emailSenderMock.Setup(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ThrowsAsync(new Exception("error"));
+
+            //act
+            var result = await _blogController.LikeArticle(1,
+                                                _sessionMock.Object,
+                                                _emailSenderMock.Object,
+                                                _configurationMock.Object) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succesfully", model.Message);
+
+            _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Once());
+            _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());
+            
+            _configurationMock.Verify(x => x["PersonalEmail:Email"], Times.Once());
+            _blogRepository.Verify(x => x.GetArticleTitle(1), Times.Once());
+            _emailSenderMock.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once());
+        }
+        #endregion
     }
 }
