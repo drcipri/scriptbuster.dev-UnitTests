@@ -23,6 +23,8 @@ using Moq;
 using Microsoft.AspNetCore.Mvc.Routing;
 using scriptbuster.dev.Services.SessionService;
 using Microsoft.Extensions.Configuration;
+using System.Diagnostics.CodeAnalysis;
+using scriptbuster.dev.Infrastructure.ViewModels.BlogController;
 
 namespace scriptbuster.dev_UnitTests.Controllers
 {
@@ -42,7 +44,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
         private Mock<ISessionService> _sessionMock;
         private Mock<IEmailSender> _emailSenderMock;
         private Mock<IConfiguration> _configurationMock;
- 
+
         private IFormFile[]? _formFileArray;
         private Mock<IFormFile> _formFile;
 
@@ -71,6 +73,25 @@ namespace scriptbuster.dev_UnitTests.Controllers
                                                  _fileSystemService.Object,
                                                  _directoryInfoWrapper.Object);
         }
+        public async IAsyncEnumerable<Tag> MockGetAllTags()
+        {
+            var tags = new List<Tag>
+            {
+                new Tag { Id = 1, Name= "Test" },
+                new Tag { Id = 2, Name = "Test2"},
+                new Tag { Id = 3, Name = "Test3"}
+            };
+
+            foreach(var tag in tags)
+            {
+                yield return tag;
+            }
+            await Task.CompletedTask;
+        }
+
+
+
+
         #region AddAuthor
         [Test]
         public async Task AddAuthor_ModelStateIsNotValid_ReturnBadRequest()
@@ -397,8 +418,8 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _formFile.SetupGet(x => x.ContentType).Returns("application/test");
             var mockSecondFormFile = new Mock<IFormFile>();
             mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
-                                                      
-            _formFileArray = new IFormFile[] {mockSecondFormFile.Object,  _formFile.Object };
+
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
 
             //act
             var result = await _blogController.PostArticle(default!, article, _formFileArray!, Enumerable.Empty<int>()) as BadRequestObjectResult;
@@ -450,7 +471,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Title = "TestTitle",
                 HtmlContent = "HtmlContentTest"
             };
-            
+
             var emptyTagCollection = new List<int>();
 
             //act
@@ -467,7 +488,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
         }
         [Test]
         public async Task PostArticle_TagsDoesNotExistsInTheDatabase_ReturnBadRequest()
-            //unlikely to happen , only if the ids were altered on the client side
+        //unlikely to happen , only if the ids were altered on the client side
         {
             _statusService.Setup(x => x.GetUserId()).Returns("user");
             _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
@@ -477,11 +498,11 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Title = "TestTitle",
                 HtmlContent = "HtmlContentTest"
             };
-           
-            var tagsCollection = new List<int> { 1,2,3 };
+
+            var tagsCollection = new List<int> { 1, 2, 3 };
 
             //act
-            var result = await _blogController.PostArticle(default!, article, default!,tagsCollection) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, default!, tagsCollection) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
@@ -494,18 +515,18 @@ namespace scriptbuster.dev_UnitTests.Controllers
         }
         [Test]
         public async Task PostArticle_NumberOfImagesAndNumberOfImgNodesDontMatch_ImagesAreNotSavedOnTheServer_ReturnOkResult()
-            //in theory this should never happen in a real environment Only if HtmlDoc Was altered on ClientSide
+        //in theory this should never happen in a real environment Only if HtmlDoc Was altered on ClientSide
         {
             //arrange
             _statusService.Setup(x => x.GetUserId()).Returns("user");
             _blogRepository.Setup(x => x.GetUserAuthor("user")).ReturnsAsync(new BlogAuthor());//pass authorValidation
 
             //pass tags validation
-            var mockTags = new List<int> { 1 }; 
+            var mockTags = new List<int> { 1 };
             _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
-            
+
             var article = new BlogArticleBindingTarget();
-           
+
             _formFile.SetupGet(x => x.ContentType).Returns("image/png"); //pass blogPictures Validation
             var mockSecondFormFile = new Mock<IFormFile>();
             mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
@@ -516,7 +537,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var htmlDoc = new HtmlDocument();
             var imgNodes = new HtmlNodeCollection(htmlDoc.DocumentNode);//empty collection
             _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes);
-           
+
             //act
             var result = await _blogController.PostArticle(default!, article, _formFileArray!, mockTags) as OkObjectResult;
             var model = result!.Value as SuccesResponse ?? new();
@@ -607,7 +628,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Title = "TestTitle",
                 HtmlContent = "HtmlContentTest"
             };
-            
+
             //pass tags validation
             var mockTags = new List<int> { 1 };
             _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
@@ -694,7 +715,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             };
             _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes); //returns count of two like in the form file array.
                                                                                                   //pass nodes check validation
-           
+
             //directory info return a new IDirectoryInfoWrapper
             var subdirectoryMock = new Mock<IDirectoryInfoWrapper>();
             subdirectoryMock.SetupGet(x => x.Name).Returns("testName");
@@ -789,7 +810,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
         #endregion
         #region AddArticle and ReadArticle
         [Test]
-        public void  AddArticle_CanGenerateArticleLinkForAjax_ReturnView()
+        public void AddArticle_CanGenerateArticleLinkForAjax_ReturnView()
         {
             //arrange
             var mockUrlHelper = new Mock<IUrlHelper>();
@@ -863,9 +884,9 @@ namespace scriptbuster.dev_UnitTests.Controllers
         public async Task LikeArticle_ArticleIdIsZeroOrLess_ReturnBadRequest(int articleId)
         {
             //act
-            var result =  await _blogController.LikeArticle(articleId, 
-                                                _sessionMock.Object, 
-                                                _emailSenderMock.Object, 
+            var result = await _blogController.LikeArticle(articleId,
+                                                _sessionMock.Object,
+                                                _emailSenderMock.Object,
                                                 _configurationMock.Object) as BadRequestObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
@@ -910,7 +931,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(model.Error, Is.EqualTo("Unknown Error"));
 
             _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Once());
-            _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());   
+            _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());
         }
         [Test]
         public async Task LikeArtic_ArticleBeenLiked_ReturnOk()
@@ -953,11 +974,202 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
             _blogRepository.Verify(x => x.LikeArticle(It.IsAny<int>()), Times.Once());
             _sessionMock.Verify(x => x.AddString(It.IsAny<string>(), It.IsAny<string>()), Times.Once());
-            
+
             _configurationMock.Verify(x => x["PersonalEmail:Email"], Times.Once());
             _blogRepository.Verify(x => x.GetArticleTitle(1), Times.Once());
             _emailSenderMock.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once());
         }
         #endregion
+        #region Tags
+        [Test]
+        public async Task BlogPanel_CanCreateDeleteTagLinkAndAddTagLink()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            mockUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/test-link");
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+
+            //act
+            var result = await _blogController.BlogPanel() as ViewResult;
+
+            //assert
+            Assert.That(result?.ViewData["DeleteTagLink"], Is.EqualTo("/test/test-link"));
+            Assert.That(result?.ViewData["AddTagLink"], Is.EqualTo("/test/test-link"));
+           
+        }
+        [Test]
+        public async Task BlogPanel_CanGetAllTagsAndTagsCount_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+            _blogRepository.Setup(x => x.GetTagsCount()).ReturnsAsync(3);
+
+            var result = (await _blogController.BlogPanel() as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var tags = result.Tags.ToList();
+
+
+            //assert
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.TagsCount, Is.EqualTo(3));
+                Assert.That(tags[0].Id, Is.EqualTo(1));
+                Assert.That(tags[0].Name, Is.EqualTo("Test"));
+                Assert.That(tags[1].Id, Is.EqualTo(2));
+                Assert.That(tags[1].Name, Is.EqualTo("Test2"));
+            });
+        }
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task DeleteTag_IsLessThenOrEqualToZero_ReturnBadRequest(int tagId)
+        {
+            //act
+            var result = await _blogController.DeleteTag(tagId) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("InvalidTagId"));
+
+            _blogRepository.Verify(x => x.DeleteTag(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task DeleteTag_ThrowInvalidOperationException_ReturnNotFound()
+        {
+            //arrange
+            int tagId = 1;//pass the validation
+            _blogRepository.Setup(x => x.DeleteTag(tagId)).ThrowsAsync(new InvalidOperationException("testError"));
+
+            //act
+            var result = await _blogController.DeleteTag(tagId) as NotFoundObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.NotFound));
+            Assert.That(model.Error, Is.EqualTo("TagNotFound"));
+            _blogRepository.Verify(x => x.DeleteTag(tagId), Times.Once());
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Never());
+
+            Assert.ThrowsAsync<InvalidOperationException>(() => _blogRepository.Object.DeleteTag(tagId), "testError");
+        }
+        [Test]
+        public async Task DeleteTag_ThrowsExeption_ReturnUnprocessableEntity()
+        {
+            //arrange
+            int tagId = 1;//pass the validation
+            _blogRepository.Setup(x => x.DeleteTag(tagId)).ThrowsAsync(new Exception("testError"));
+
+            //act
+            var result = await _blogController.DeleteTag(tagId) as UnprocessableEntityObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("UnknownError"));
+            _blogRepository.Verify(x => x.DeleteTag(tagId), Times.Once());
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Never());
+
+            Assert.ThrowsAsync<Exception>(() => _blogRepository.Object.DeleteTag(tagId), "testError");
+        }
+        [Test]
+        public async Task DeleteTag_CanGetTagsCountAndReturnTheDEletedTagId_ReturnOk()
+        {
+            //arrange
+            int tagId = 1;//pass the validation
+            _blogRepository.Setup(x => x.GetTagsCount()).ReturnsAsync(4);//4 test
+
+            //act
+            var result = await _blogController.DeleteTag(tagId) as OkObjectResult;
+            //reflection required for anonymous objects
+            var model = result?.Value?.GetType().GetProperties();
+            var returnedTagId = model?.FirstOrDefault(x => x.Name == "tagId")?.GetValue(result?.Value);
+            var returnedTagsCount = model?.FirstOrDefault(x => x.Name == "tagsCount")?.GetValue(result?.Value);
+            
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            Assert.That(returnedTagId, Is.EqualTo(tagId));
+            Assert.That(returnedTagsCount, Is.EqualTo(4));
+            _blogRepository.Verify(x => x.DeleteTag(tagId), Times.Once());
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
+        }
+        [Test]
+        [TestCase("")]
+        [TestCase(null)]
+        public async Task AddTag_TagNameIsNullOrEmpty_ReturnBadRequest(string tagName)
+        {
+            //act
+            var result = await _blogController.AddTag(tagName!) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("InvalidTagName"));
+
+            _blogRepository.Verify(x => x.AddTag(It.IsAny<Tag>()), Times.Never());
+        }
+        [Test]
+        public async Task AddTag_ThrowsInvalidOperationException_ReturnBadRequest()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.AddTag(It.IsAny<Tag>())).ThrowsAsync(new InvalidOperationException("testError"));
+
+            //act
+            var result = await _blogController.AddTag("testTag") as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("TagNameExist"));
+
+            _blogRepository.Verify(x => x.AddTag(It.IsAny<Tag>()), Times.Once());
+            _blogRepository.Verify(x => x.GetTagByName(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task AddTag_ThrowsInvalidOperationExceptionAndGetTagByNameReturnDEfault_ReturnUnprocessableEntity()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.AddTag(It.IsAny<Tag>())).ThrowsAsync(new Exception("testError"));
+
+            //act
+            var result = await _blogController.AddTag("testTag") as UnprocessableEntityObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("UnprocessableEntity"));
+
+            _blogRepository.Verify(x => x.AddTag(It.IsAny<Tag>()), Times.Once());
+            _blogRepository.Verify(x => x.GetTagByName(It.IsAny<string>()), Times.Once());
+        }
+        [Test]
+        public async Task AddTag_WorkSmothly_ReturnOk()
+        {
+            //arrange
+            var tag = new Tag { Id = 1, Name = "testTag" };
+            _blogRepository.Setup(x => x.GetTagByName("testTag")).ReturnsAsync(tag);
+            _blogRepository.Setup(x => x.GetTagsCount()).ReturnsAsync(1);
+            //act
+            var result = await _blogController.AddTag("testTag") as OkObjectResult;
+            
+            //reflection required because of anonymous objects
+            var model = result?.Value?.GetType().GetProperties();
+            var returnedTag = model?.FirstOrDefault(x => x.Name == "tag")?.GetValue(result?.Value) as Tag ?? new();
+            var returnedTagCount = (int)model?.FirstOrDefault(x => x.Name == "tagsCount")?.GetValue(result?.Value)!;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            Assert.That(returnedTag.Id, Is.EqualTo(1));
+            Assert.That(returnedTag.Name, Is.EqualTo("testTag"));
+            Assert.That(returnedTagCount, Is.EqualTo(1));
+
+            _blogRepository.Verify(x => x.AddTag(It.IsAny<Tag>()), Times.Once());
+            _blogRepository.Verify(x => x.GetTagByName(It.IsAny<string>()), Times.Once());
+        }
+
+        #endregion
+
     }
 }

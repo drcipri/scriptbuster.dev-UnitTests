@@ -62,7 +62,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
             //assert
             Assert.That(result, Is.Not.Null);
-            Assert.That(result.StatusCode, Is.EqualTo(200));
+            Assert.That(result!.StatusCode, Is.EqualTo(200));
             //using reflection to get an anonymous object Property
             var value = result.Value?.GetType().GetProperty("AccesKey")?.GetValue(result.Value);
             Assert.That(value, Is.EqualTo("TestApiKeyValueNew"));
