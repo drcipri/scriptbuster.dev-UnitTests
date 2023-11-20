@@ -45,6 +45,9 @@ namespace scriptbuster.dev_UnitTests.Controllers
         private Mock<IEmailSender> _emailSenderMock;
         private Mock<IConfiguration> _configurationMock;
 
+        //blog panel
+        private Mock<IHttpContextAccessor> _httpContextAccesor;
+
         private IFormFile[]? _formFileArray;
         private Mock<IFormFile> _formFile;
 
@@ -64,6 +67,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _sessionMock = new Mock<ISessionService>();
             _emailSenderMock = new Mock<IEmailSender>();
             _configurationMock = new Mock<IConfiguration>();
+            _httpContextAccesor = new Mock<IHttpContextAccessor>();
 
             _blogController = new BlogController(_statusService.Object,
                                                  _blogRepository.Object,
@@ -85,6 +89,37 @@ namespace scriptbuster.dev_UnitTests.Controllers
             foreach(var tag in tags)
             {
                 yield return tag;
+            }
+            await Task.CompletedTask;
+        }
+        public async IAsyncEnumerable<BlogArticle> MockGetUserBlogArticlesByDescending()
+        {
+            var list = new List<BlogArticle>
+            {
+                new BlogArticle
+                {
+                    Id = 1,
+                    Title = "TestArticle1",
+                },
+                new BlogArticle
+                {
+                    Id = 2,
+                    Title = "TestArticle2"
+                },
+                new BlogArticle
+                {
+                    Id = 3,
+                    Title = "TestArticle3"
+                },
+                new BlogArticle
+                {
+                    Id = 4,
+                    Title = "TestArticle4"
+                }
+            };
+            foreach (var article in list)
+            {
+                yield return article;
             }
             await Task.CompletedTask;
         }
@@ -980,7 +1015,22 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _emailSenderMock.Verify(x => x.SendEmail(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once());
         }
         #endregion
-        #region Tags
+        #region BlogPanel
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task BlogPanel_ArticlesPagesIsLessThanOrEqualToZero_ReturnRedirectToAction(int page)
+        {
+            //act
+            var result = await _blogController.BlogPanel(_httpContextAccesor.Object, page) as RedirectToActionResult;
+
+            //assert 
+
+            Assert.That(result?.ActionName, Is.EqualTo("BlogPanel"));
+            Assert.That(result?.ControllerName, Is.EqualTo("Blog"));
+            _blogRepository.Verify(x => x.GetUserAuthor(It.IsAny<string>()), Times.Never());
+        }
+
         [Test]
         public async Task BlogPanel_CanCreateDeleteTagLinkAndAddTagLink()
         {
@@ -991,12 +1041,36 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
 
             //act
-            var result = await _blogController.BlogPanel() as ViewResult;
+            var result = await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult;
 
             //assert
             Assert.That(result?.ViewData["DeleteTagLink"], Is.EqualTo("/test/test-link"));
             Assert.That(result?.ViewData["AddTagLink"], Is.EqualTo("/test/test-link"));
-           
+
+        }
+        [Test]
+        public async Task BlogPanel_CanCreateTheAbsoluteCurrentRequestUrl_ReturnViewResult()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+
+            //currentUrlSetup
+            var mockHttpContext = new Mock<HttpContext>();
+            var mockRequest = new Mock<HttpRequest>();
+            _httpContextAccesor.Setup(x => x.HttpContext).Returns(mockHttpContext.Object);
+            mockHttpContext.Setup(x => x.Request).Returns(mockRequest.Object);
+            mockRequest.Setup(x => x.Host).Returns(new HostString("test.com/test"));
+            mockRequest.Setup(x => x.Scheme).Returns("http");
+
+            //act
+            var result = await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult;
+
+            //assert
+            Assert.That(result?.ViewData["CurrentUrl"], Is.EqualTo("http://test.com/test/"));
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
+
         }
         [Test]
         public async Task BlogPanel_CanGetAllTagsAndTagsCount_ReturnView()
@@ -1007,7 +1081,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
             _blogRepository.Setup(x => x.GetTagsCount()).ReturnsAsync(3);
 
-            var result = (await _blogController.BlogPanel() as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
             var tags = result.Tags.ToList();
 
 
@@ -1020,7 +1094,146 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 Assert.That(tags[1].Id, Is.EqualTo(2));
                 Assert.That(tags[1].Name, Is.EqualTo("Test2"));
             });
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
         }
+        [Test]
+        public async Task BlogPanel_AuthorIsNotFoundMeansItWasNotCreated_WorksSmoothlyWithout_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+
+            //act
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //Assert
+            Assert.That(result.ArticlesLikesCount, Is.EqualTo(0));
+            Assert.That(pagination.TotalItems, Is.EqualTo(0));
+            Assert.That(result.Articles.Count(), Is.EqualTo(0));
+
+            _statusService.Verify(x => x.GetUserId(), Times.Once());
+            _blogRepository.Verify(x => x.GetUserAuthor(It.IsAny<string>()), Times.Once());
+        }
+        [Test]
+        public async Task BlogPanel_GetAuthorArticlesCountThrowException_ResponsIsNotBroken_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+            _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ThrowsAsync(new Exception("test"));
+            _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
+
+            //act
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //Assert
+            Assert.That(result.ArticlesLikesCount, Is.EqualTo(0));
+            Assert.That(pagination.TotalItems, Is.EqualTo(0));
+            Assert.That(result.Articles.Count(), Is.EqualTo(0));
+            Assert.That(pagination.CurrentPage, Is.EqualTo(1));
+
+            _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task BlogPanel_GetArticlesLikesCountThrowException_ResponsIsNotBroken_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+            _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ReturnsAsync(4);//returns 4
+            _blogRepository.Setup(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>())).ThrowsAsync(new Exception("test"));
+            _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
+
+            //act
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //Assert
+            Assert.That(result.ArticlesLikesCount, Is.EqualTo(0));
+            Assert.That(pagination.TotalItems, Is.EqualTo(4));//4 from Setup
+            Assert.That(result.Articles.Count(), Is.EqualTo(0));
+            Assert.That(pagination.CurrentPage, Is.EqualTo(1));
+
+            _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never());
+
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
+        }
+        [Test]
+        public async Task BlogPanel_GetAuthorArticlesByDescendingThrowsException_ResponsIsNotBroken_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+            _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ReturnsAsync(4);//returns 4
+            _blogRepository.Setup(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>())).ReturnsAsync(22);//returns 22
+            _blogRepository.Setup(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>())).Throws(new Exception("test"));
+            _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
+
+            //act
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //Assert
+            Assert.That(result.ArticlesLikesCount, Is.EqualTo(22));//22 from Setup
+            Assert.That(pagination.TotalItems, Is.EqualTo(4));//4 from Setup
+            Assert.That(result.Articles.Count(), Is.EqualTo(0));
+            Assert.That(pagination.CurrentPage, Is.EqualTo(1));
+
+            _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
+        }
+        [Test]
+        public async Task BlogPanel_CanRetrieveArticlesTotalLikesCountTotalArticlesCount_ReturnView()
+        {
+            //arrange
+            var mockUrlHelper = new Mock<IUrlHelper>();
+            _blogController.Url = mockUrlHelper.Object;
+            _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
+            _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ReturnsAsync(4);//returns 4
+            _blogRepository.Setup(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>())).ReturnsAsync(22);//returns 22
+            _blogRepository.Setup(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+            _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
+
+            //act
+            var result = (await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult)?.ViewData.Model as BlogPanelViewModel ?? new();
+            var pagination = result.Pagination;
+            var artclesList = result.Articles.ToList();
+
+            //Assert
+            Assert.That(result.ArticlesLikesCount, Is.EqualTo(22));//22 from Setup
+            Assert.That(pagination.TotalItems, Is.EqualTo(4));//4 from Setup
+
+            Assert.That(artclesList.Count(), Is.EqualTo(4));
+            Assert.That(artclesList[0].Id, Is.EqualTo(1));
+            Assert.That(artclesList[1].Id, Is.EqualTo(2));
+            Assert.That(artclesList[2].Id, Is.EqualTo(3));
+            Assert.That(artclesList[0].Title, Is.EqualTo("TestArticle1"));
+            Assert.That(artclesList[1].Title, Is.EqualTo("TestArticle2"));
+            Assert.That(artclesList[2].Title, Is.EqualTo("TestArticle3"));
+
+            Assert.That(pagination.CurrentPage, Is.EqualTo(1));
+
+            _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
+        }
+        #endregion
+        #region Tags
         [Test]
         [TestCase(0)]
         [TestCase(-1)]
