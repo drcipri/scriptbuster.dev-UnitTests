@@ -1032,11 +1032,13 @@ namespace scriptbuster.dev_UnitTests.Controllers
         }
 
         [Test]
-        public async Task BlogPanel_CanCreateDeleteTagLinkAndAddTagLink()
+        public async Task BlogPanel_CanCreateDeleteTagLinkAndAddTagLinkAndDeleteArticleLink_ReturnView()
         {
             //arrange
             var mockUrlHelper = new Mock<IUrlHelper>();
-            mockUrlHelper.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/test-link");
+            mockUrlHelper.SetupSequence(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/delete-tag-link")
+                                                                                    .Returns("/test/add-tag-link")
+                                                                                    .Returns("/test/delete-article-link");
             _blogController.Url = mockUrlHelper.Object;
             _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
 
@@ -1044,9 +1046,11 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var result = await _blogController.BlogPanel(_httpContextAccesor.Object, 1) as ViewResult;
 
             //assert
-            Assert.That(result?.ViewData["DeleteTagLink"], Is.EqualTo("/test/test-link"));
-            Assert.That(result?.ViewData["AddTagLink"], Is.EqualTo("/test/test-link"));
+            Assert.That(result?.ViewData["DeleteTagLink"], Is.EqualTo("/test/delete-tag-link"));
+            Assert.That(result?.ViewData["AddTagLink"], Is.EqualTo("/test/add-tag-link"));
+            Assert.That(result?.ViewData["DeleteArticleLink"], Is.EqualTo("/test/delete-article-link"));
 
+            mockUrlHelper.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.AtLeast(3));
         }
         [Test]
         public async Task BlogPanel_CanCreateTheAbsoluteCurrentRequestUrl_ReturnViewResult()
@@ -1383,6 +1387,182 @@ namespace scriptbuster.dev_UnitTests.Controllers
         }
 
         #endregion
+        #region DeleteArticle
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task DeleteArticle_ArticleIdIsZeroOrLess_ReturnBadRequest(int articleId)
+        {
+            //act
+            var result =  await _blogController.DeleteArticle(articleId) as BadRequestObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
 
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("InvalidTagId"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task DeleteArticle_GetArticleFolderUniqueIdentifierThrowsException_ReturnUnprocesableEntity()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.GetArticleFolderUnqueIdentifier(It.IsAny<int>())).ThrowsAsync(new Exception("testException"));
+            
+            //act
+            var result = await _blogController.DeleteArticle(1) as UnprocessableEntityObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("UnknownError"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task DeleteArticle_DeleteArticleThrowsInvalidException_ReturnNotFound()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.DeleteArticle(It.IsAny<int>())).ThrowsAsync(new InvalidOperationException("testException"));
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as NotFoundObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.NotFound));
+            Assert.That(model.Error, Is.EqualTo("ArticleNotFound"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+        }
+        [Test]
+        public async Task DeleteArticle_DeleteArticleThrowsException_ReturnUnprocesableEntity()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.DeleteArticle(It.IsAny<int>())).ThrowsAsync(new Exception("testException"));
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as UnprocessableEntityObjectResult;
+            var model = result?.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("UnknownError"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+        }
+        [Test]
+        public async Task DeleteArticle_DoesnNotHaveStaticFiles_CanCreateTheReturnUrl_ReturnOk()
+        {
+            //arrange
+            var mockUrl = new Mock<IUrlHelper>();
+            mockUrl.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/blog-article-Link");
+            _blogController.Url = mockUrl.Object;
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as OkObjectResult;
+            var model = result?.Value?.GetType().GetProperties();
+            var message = model?[0].GetValue(result?.Value) as string;
+            var returnUrl = model?[1].GetValue(result?.Value) as string;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("Succesfully", message);
+            Assert.That(returnUrl, Is.EqualTo("/test/blog-article-Link"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+        }
+        [Test]
+        public async Task DeleteArticle_WOrks_ButForSomeReasoneThereIsAnUniqueIdentifierForTheStaticFilesFolderButTheFolderIsNotFound_ResponseIsNotBroken_()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.GetArticleFolderUnqueIdentifier(It.IsAny<int>())).ReturnsAsync("testIdentifier");
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testWebRoot");
+
+            var mockUrl = new Mock<IUrlHelper>();
+            mockUrl.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/blog-article-Link");
+            _blogController.Url = mockUrl.Object;
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as OkObjectResult;
+            var model = result?.Value?.GetType().GetProperties();
+            var message = model?[0].GetValue(result?.Value) as string;
+            var returnUrl = model?[1].GetValue(result?.Value) as string;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("Succesfully", message);
+            Assert.That(returnUrl, Is.EqualTo("/test/blog-article-Link"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.GetDirectories(), Times.Once());
+        }
+
+        [Test]
+        public async Task DeleteArticle_WOrks_DeleteArticleStaticFilesFolderThrowsExceptionButResponseIsNotBroken_ReturnOk()
+        {
+            //arrange
+            _directoryInfoWrapper.Setup(x => x.Delete()).Throws(new Exception("deleteArticleFolderExceptionTest"));//setup to throw exception
+
+            _blogRepository.Setup(x => x.GetArticleFolderUnqueIdentifier(It.IsAny<int>())).ReturnsAsync("testUniqueIdentifier");
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testWebRoot");
+            var mockArticleStaticFilesFolder = new Mock<IDirectoryInfoWrapper>();
+            mockArticleStaticFilesFolder.SetupGet(x => x.Name).Returns("testUniqueIdentifier");
+            var wrapperDirectoriesCollection = new List<IDirectoryInfoWrapper>() { mockArticleStaticFilesFolder.Object };
+            _directoryInfoWrapper.Setup(x => x.GetDirectories()).Returns(wrapperDirectoriesCollection.ToArray());
+
+            var mockUrl = new Mock<IUrlHelper>();
+            mockUrl.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/blog-article-Link");
+            _blogController.Url = mockUrl.Object;
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as OkObjectResult;
+            var model = result?.Value?.GetType().GetProperties();
+            var message = model?[0].GetValue(result?.Value) as string;
+            var returnUrl = model?[1].GetValue(result?.Value) as string;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("Succesfully", message);
+            Assert.That(returnUrl, Is.EqualTo("/test/blog-article-Link"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.GetDirectories(), Times.Once());
+            mockArticleStaticFilesFolder.Verify(x => x.Delete(), Times.Once());
+        }
+        [Test]
+        public async Task DeleteArticle_WOrks_CanDeleteArticleStaticFilesFolder_ReturnOk()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.GetArticleFolderUnqueIdentifier(It.IsAny<int>())).ReturnsAsync("testUniqueIdentifier");
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testWebRoot");
+            
+            var mockArticleStaticFilesFolder = new Mock<IDirectoryInfoWrapper>();
+            mockArticleStaticFilesFolder.SetupGet(x => x.Name).Returns("testUniqueIdentifier");
+            //return a coollection from GetDirectories
+            var wrapperDirectoriesCollection = new List<IDirectoryInfoWrapper>() { mockArticleStaticFilesFolder.Object };
+            _directoryInfoWrapper.Setup(x => x.GetDirectories()).Returns(wrapperDirectoriesCollection.ToArray());
+
+            var mockUrl = new Mock<IUrlHelper>();
+            mockUrl.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/blog-article-Link");
+            _blogController.Url = mockUrl.Object;
+
+            //act
+            var result = await _blogController.DeleteArticle(1) as OkObjectResult;
+            var model = result?.Value?.GetType().GetProperties();
+            var message = model?[0].GetValue(result?.Value) as string;
+            var returnUrl = model?[1].GetValue(result?.Value) as string;
+
+            //assert
+            Assert.That(result?.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("Succesfully", message);
+            Assert.That(returnUrl, Is.EqualTo("/test/blog-article-Link"));
+
+            _blogRepository.Verify(x => x.DeleteArticle(It.IsAny<int>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.GetDirectories(), Times.Once());
+            mockArticleStaticFilesFolder.Verify(x => x.Delete(), Times.Once());
+        }
+
+        #endregion
     }
 }
