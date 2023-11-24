@@ -115,7 +115,38 @@ namespace scriptbuster.dev_UnitTests.Controllers
                 {
                     Id = 4,
                     Title = "TestArticle4"
+                },
+                 new BlogArticle
+                {
+                    Id = 5,
+                    Title = "TestArticle5",
+                },
+                new BlogArticle
+                {
+                    Id = 6,
+                    Title = "TestArticle6"
+                },
+                new BlogArticle
+                {
+                    Id = 7,
+                    Title = "TestArticle7"
+                },
+                new BlogArticle
+                {
+                    Id = 8,
+                    Title = "TestArticle8"
+                },
+                  new BlogArticle
+                {
+                    Id = 9,
+                    Title = "TestArticle9"
+                },
+                new BlogArticle
+                {
+                    Id = 10,
+                    Title = "TestArticle10"
                 }
+
             };
             foreach (var article in list)
             {
@@ -1166,7 +1197,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
             _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
             _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
-            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never());
 
             _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
         }
@@ -1179,7 +1210,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
             _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ReturnsAsync(4);//returns 4
             _blogRepository.Setup(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>())).ReturnsAsync(22);//returns 22
-            _blogRepository.Setup(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>())).Throws(new Exception("test"));
+            _blogRepository.Setup(x => x.GetAuthorArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>())).Throws(new Exception("test"));
             _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
 
             //act
@@ -1194,7 +1225,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
             _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
             _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
-            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
 
             _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
         }
@@ -1207,7 +1238,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.GetAllTags()).Returns(MockGetAllTags());
             _blogRepository.Setup(x => x.GetAllAuthorArticlesCount(It.IsAny<int>())).ReturnsAsync(4);//returns 4
             _blogRepository.Setup(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>())).ReturnsAsync(22);//returns 22
-            _blogRepository.Setup(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+            _blogRepository.Setup(x => x.GetAuthorArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
                            .Returns(MockGetUserBlogArticlesByDescending());
             _blogRepository.Setup(x => x.GetUserAuthor(It.IsAny<string>())).ReturnsAsync(new BlogAuthor());
 
@@ -1232,7 +1263,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
 
             _blogRepository.Verify(x => x.GetAllAuthorArticlesCount(It.IsAny<int>()), Times.Once());
             _blogRepository.Verify(x => x.GetArticlesLikesCountPerAuthor(It.IsAny<int>()), Times.Once());
-            _blogRepository.Verify(x => x.GetAuthorArticlesByDescending(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAuthorArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Once());
 
             _blogRepository.Verify(x => x.GetTagsCount(), Times.Once());
         }
@@ -1563,6 +1594,169 @@ namespace scriptbuster.dev_UnitTests.Controllers
             mockArticleStaticFilesFolder.Verify(x => x.Delete(), Times.Once());
         }
 
+        #endregion
+        #region DevsArea
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task DevsArea_ArticlesPageIsLessThanOREqualToZero_ReturnRedirectoToAction(int articlesPage)
+        {
+            //act
+            var result = await _blogController.DevsArea(_httpContextAccesor.Object, articlesPage) as RedirectToActionResult;
+
+            //assert
+            Assert.That(result?.ActionName, Is.EqualTo("DevsArea"));
+            Assert.That(result?.ControllerName, Is.EqualTo("Blog"));
+            _blogRepository.Verify(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task DevsArea_CanGetArticlesWithPagination_ReturnViewDevsArea()
+        {
+            //arrange
+            //using this method works as long as it returns a collection of BlogArticles. Pagination is done at the server anyway
+            _blogRepository.Setup(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+
+            //act
+            var result = await _blogController.DevsArea(_httpContextAccesor.Object, 1) as ViewResult;
+            var model = result?.ViewData.Model as DevsAreaViewModel ?? new();
+            var articles = model.Articles.ToList();
+
+            //assert
+            Assert.That(articles[0].Id, Is.EqualTo(1));
+            Assert.That(articles[0].Title, Is.EqualTo("TestArticle1"));
+            Assert.That(articles[3].Id, Is.EqualTo(4));
+            Assert.That(articles[3].Title, Is.EqualTo("TestArticle4"));
+            _blogRepository.Verify(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+        }
+        [Test]
+        public async Task DevsArea_CanReturnTheCurentRequestURL_ReturnViewDevsArea()
+        {
+            //arrange
+            //using this method works as long as it returns a collection of BlogArticles. Pagination is done at the server anyway
+            _blogRepository.Setup(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+
+            //currentUrlArrange
+            var mockHttpContext = new Mock<HttpContext>();
+            var mockHttpRequest = new Mock<HttpRequest>();
+            mockHttpContext.SetupGet(x => x.Request).Returns(mockHttpRequest.Object);
+            mockHttpRequest.SetupGet(x => x.Host).Returns(new HostString("test.com"));
+            mockHttpRequest.SetupGet(x => x.Scheme).Returns("http");
+            _httpContextAccesor.Setup(x => x.HttpContext).Returns(mockHttpContext.Object);
+
+            //act
+            var result = await _blogController.DevsArea(_httpContextAccesor.Object, 1) as ViewResult;
+
+            //assert
+            Assert.That(result?.ViewData["CurrentUrl"], Is.EqualTo("http://test.com/"));
+            _blogRepository.Verify(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+        }
+        [Test]
+        public async Task DevsArea_PaginationObjectIsSetup_ReturnViewDevsArea()
+        {
+            //arrange
+            //using this method works as long as it returns a collection of BlogArticles. Pagination is done at the server anyway
+            _blogRepository.Setup(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+
+            _blogRepository.Setup(x => x.GetAllArticlesCount()).ReturnsAsync(49);
+            var currentPage = 1;
+            //act
+            var result = (await _blogController.DevsArea(_httpContextAccesor.Object, currentPage) as ViewResult)?.ViewData.Model as DevsAreaViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //assert
+            Assert.That(pagination.PageSize, Is.EqualTo(9));//9 is the constant setup, if you decide to change that you should change it here as well.
+            Assert.That(pagination.CurrentPage, Is.EqualTo(currentPage));
+            Assert.That(pagination.TotalItems, Is.EqualTo(49));
+            Assert.That(pagination.TotalPages, Is.EqualTo(6));//49/9 = 5.4 => 6 pages
+
+            _blogRepository.Verify(x => x.GetAllArticlesByDescendingWithPagination(It.IsAny<int>(), It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.GetAllArticlesCount(), Times.Once());
+        }
+        [Test]
+        [TestCase(0, "search")]
+        [TestCase(-1, "search")]
+        [TestCase(1, "")]
+        [TestCase(1, null)]
+        [TestCase(0, null)]
+        [TestCase(0,"")]
+        public async Task DevsAreaSearch_ArticlesPageIsLessThanOREqualToZeroOrSearchCriteriaIsNullOrEmpty_ReturnRedirectoToAction(int articlesPage, string searchCriteria)
+        {
+            //act
+            var result = await _blogController.DevsAreaSearch(_httpContextAccesor.Object, searchCriteria ,articlesPage) as RedirectToActionResult;
+
+            //assert
+            Assert.That(result?.ActionName, Is.EqualTo("DevsArea"));
+            Assert.That(result?.ControllerName, Is.EqualTo("Blog"));
+            _blogRepository.Verify(x => x.SearchAllArticlesByDescending(It.IsAny<string>()), Times.Never());
+        }
+        [Test]
+        public async Task DevsAreaSearch_CanPaginateAndReturnArticles_ReturnView()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.SearchAllArticlesByDescending(It.IsAny<string>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+
+            //act
+            var result = await _blogController.DevsAreaSearch(_httpContextAccesor.Object, "testSearchCriteria", 2) as ViewResult;
+            var model = result?.ViewData.Model as DevsAreaViewModel ?? new();
+            var articles = model?.Articles.ToList();
+
+            //assert
+            Assert.That(result?.ViewName, Is.EqualTo("DevsArea"));
+            Assert.That(articles?[0].Id, Is.EqualTo(10)); //PageSize is set to 9 so if you ever changed that this tests need to be changed
+            Assert.That(articles[0].Title, Is.EqualTo("TestArticle10"));
+
+            _blogRepository.Verify(x => x.SearchAllArticlesByDescending("testSearchCriteria"), Times.Once());
+            
+        }
+        [Test]
+        public async Task DevsAreaSearch_CanReturnCurrentRequestUrlAndViewBagSearchCriteria_ReturnView()
+        {
+            //arrange
+            _blogRepository.Setup(x => x.SearchAllArticlesByDescending(It.IsAny<string>()))
+                          .Returns(MockGetUserBlogArticlesByDescending());
+            //currentUrlArrange
+            var mockHttpContext = new Mock<HttpContext>();
+            var mockHttpRequest = new Mock<HttpRequest>();
+            mockHttpContext.SetupGet(x => x.Request).Returns(mockHttpRequest.Object);
+            mockHttpRequest.SetupGet(x => x.Host).Returns(new HostString("test.com"));
+            mockHttpRequest.SetupGet(x => x.Scheme).Returns("http");
+            _httpContextAccesor.Setup(x => x.HttpContext).Returns(mockHttpContext.Object);
+
+            //act
+            var result = await _blogController.DevsAreaSearch(_httpContextAccesor.Object, "testSearchCriteria",1) as ViewResult;
+
+            //assert
+            Assert.That(result?.ViewData["CurrentUrl"], Is.EqualTo("http://test.com/"));
+            Assert.That(_blogController.ViewBag.SearchCriteria, Is.EqualTo("testSearchCriteria"));
+            _blogRepository.Verify(x => x.SearchAllArticlesByDescending(It.IsAny<string>()), Times.Once());
+        }
+          [Test]
+        public async Task DevsAreaSearch_PaginationObjectIsSetupAndSearchRequestSetToTrue_ReturnViewDevsArea()
+        {
+            //arrange
+            //using this method works as long as it returns a collection of BlogArticles. Pagination is done at the server anyway
+            _blogRepository.Setup(x => x.SearchAllArticlesByDescending(It.IsAny<string>()))
+                           .Returns(MockGetUserBlogArticlesByDescending());
+            var currentPage = 1;
+            //act
+            var result = (await _blogController.DevsAreaSearch(_httpContextAccesor.Object, "testSearchCriteria" ,currentPage) 
+                          as ViewResult)?.ViewData.Model as DevsAreaViewModel ?? new();
+            var pagination = result.Pagination;
+
+            //assert
+            Assert.That(pagination.PageSize, Is.EqualTo(9));//9 is the constant setup, if you decide to change that you should change it here as well.
+            Assert.That(pagination.CurrentPage, Is.EqualTo(currentPage));
+            Assert.That(pagination.TotalItems, Is.EqualTo(10));
+            Assert.That(pagination.TotalPages, Is.EqualTo(2));//10/9 = 1.1 => 2 Pages
+
+            Assert.That(result.SearchRequest, Is.True);
+
+            _blogRepository.Verify(x => x.SearchAllArticlesByDescending(It.IsAny<string>()), Times.Once());
+        }
         #endregion
     }
 }
