@@ -1,4 +1,5 @@
-﻿using scriptbuster.dev.Models.Repository;
+﻿using scriptbuster.dev.IdentityModels.Repository;
+using scriptbuster.dev.Models.Repository;
 using scriptbuster.dev.Pages;
 using System;
 using System.Collections.Generic;
@@ -23,8 +24,10 @@ namespace scriptbuster.dev_UnitTests.Pages
             mockProjects.Setup(x => x.GetTotalMessages()).ReturnsAsync(5);
             var mockFaq = new Mock<IRepositoryFAQ>();
             mockFaq.Setup(x => x.GetTotalFaqs()).ReturnsAsync(5);
+            var mockBlog = new Mock<IBlogRepository>();
+            mockBlog.Setup(x => x.GetAllArticlesCount()).ReturnsAsync(5);
 
-            var model = new AdminModel(mockFaq.Object, mockMessages.Object, mockProjects.Object);
+            var model = new AdminModel(mockFaq.Object, mockMessages.Object, mockProjects.Object, mockBlog.Object);
             //act
             await model.OnGet();
 
@@ -34,6 +37,7 @@ namespace scriptbuster.dev_UnitTests.Pages
             Assert.That(model.ModelsInfo.UnreadProjectMessages, Is.EqualTo(1));
             Assert.That(model.ModelsInfo.TotalProjectMessages, Is.EqualTo(5));
             Assert.That(model.ModelsInfo.TotalFaqs, Is.EqualTo(5));
+            Assert.That(model.ModelsInfo.TotalArticles, Is.EqualTo(5));
         }
     }
 }

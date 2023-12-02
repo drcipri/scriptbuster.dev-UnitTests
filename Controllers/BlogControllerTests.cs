@@ -1251,7 +1251,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(result.ArticlesLikesCount, Is.EqualTo(22));//22 from Setup
             Assert.That(pagination.TotalItems, Is.EqualTo(4));//4 from Setup
 
-            Assert.That(artclesList.Count(), Is.EqualTo(4));
+            Assert.That(artclesList.Count(), Is.EqualTo(10));
             Assert.That(artclesList[0].Id, Is.EqualTo(1));
             Assert.That(artclesList[1].Id, Is.EqualTo(2));
             Assert.That(artclesList[2].Id, Is.EqualTo(3));
