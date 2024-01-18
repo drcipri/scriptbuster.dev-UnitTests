@@ -17,7 +17,6 @@ namespace scriptbuster.dev_UnitTests.ServicesTests
         private  Mock<ISessionService> _sessionService;
         private  Mock<ILogger<CookieConsent>> _logger;
         private  Mock<IHttpContextAccessor> _httpContextAccessor;
-        private  NonEssentialCookies? _nonEssentialCookies;
         private  ICookieConsent _cookieConsent;
 
         [SetUp]
