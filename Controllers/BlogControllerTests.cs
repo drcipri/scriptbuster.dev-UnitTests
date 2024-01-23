@@ -860,11 +860,11 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogRepository.Setup(x => x.AddArticle(It.IsAny<BlogArticle>())).ThrowsAsync(new Exception("error"));
 
             //act
-            var result = await _blogController.PostArticle(default!, article, default!, mockTags) as BadRequestObjectResult;
+            var result = await _blogController.PostArticle(default!, article, default!, mockTags) as UnprocessableEntityObjectResult;
             var model = result!.Value as ErrorResponse ?? new();
 
             //assert
-            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
             Assert.That(model.Error, Is.EqualTo("SomethingWentWrong"));
 
             _blogRepository.Verify(x => x.AddArticle(It.IsAny<BlogArticle>()), Times.Once());
@@ -884,10 +884,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
             _blogController.Url = mockUrlHelper.Object;
 
             //act
-            var result = (_blogController.AddArticle() as ViewResult)?.ViewData.Model as string;
+            var result = (_blogController.AddArticle() as ViewResult)?.ViewData.Model as AddArticleViewModel ?? new();
 
             //Assert
-            Assert.That(result, Is.EqualTo("/test/post-article"));
+            Assert.That(result.AJAXLink, Is.EqualTo("/test/post-article"));
         }
         [Test]
         [TestCase(0)]
@@ -895,10 +895,10 @@ namespace scriptbuster.dev_UnitTests.Controllers
         public async Task ReadArticle_ArticleIsLessOrEqualZero_ReturnClientInfo(int articleId)
         {
             //act
-            var result = await _blogController.ReadArticle(articleId) as RedirectToPageResult;
+            var result = await _blogController.ReadArticle(articleId) as RedirectToActionResult;
 
             //arrange
-            Assert.That(result?.PageName, Is.EqualTo("/ClientInfo"));
+            Assert.That(result?.ActionName, Is.EqualTo("DevsArea"));
 
             _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Never());
         }
@@ -1756,6 +1756,614 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(result.SearchRequest, Is.True);
 
             _blogRepository.Verify(x => x.SearchAllArticlesByDescending(It.IsAny<string>()), Times.Once());
+        }
+        #endregion
+        #region Edit Article
+        [Test]
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task EditArticle_ArticleIsLessThanOrEqualToZero_ReturnBlogPanel(int articleId)
+        {
+            //act
+            var result = await _blogController.EditArticle(articleId) as RedirectToActionResult;
+
+            //arrange
+            Assert.That(result?.ActionName, Is.EqualTo("BlogPanel"));
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Never());
+        }
+
+        [Test]
+        public async Task EditArticle_ArticleYouAreTryingToEditIsNull_ReturnErrorInfo()
+        {
+            //arrange
+            BlogArticle? nullArticle = default;
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(1)).ReturnsAsync(nullArticle);
+            var url = new Mock<IUrlHelper>();
+            _blogController.Url = url.Object;
+
+            //act
+            var result = await _blogController.EditArticle(1) as RedirectToPageResult;
+            
+            //assert
+            Assert.That(result?.PageName, Is.EqualTo("/ErrorInfo"));
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            url.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Never());
+        }
+        [Test]
+        public async Task EditArticle_CanReplaceOctalEscapeSequencesThatAreNotAllowedInJavascript()
+        {
+            //arrange
+            //this test must change \ to this \\
+            BlogArticle? article = new BlogArticle
+            {
+                HtmlContent = "<p><img src=\"/TestCase\\51dafb04-df6c-48c2-a7dc-e92fa2b30576_ThisArticleisatestdude\\960553dd-3c6a-4ebd-85a3-67910dde0bb8_image_2.png\" width=\"1536\" height=\"930\"></p>"
+            };
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(1)).ReturnsAsync(article);
+            var url = new Mock<IUrlHelper>();
+            _blogController.Url = url.Object;
+
+            //act
+            var result = await _blogController.EditArticle(1) as ViewResult;
+            var model = result?.ViewData?.Model as AddArticleViewModel ?? new();
+
+
+            //assert
+            Assert.That(model?.BlogArticle.HtmlContent, Is.EqualTo("<p><img src=\"/TestCase\\\\51dafb04-df6c-48c2-a7dc-e92fa2b30576_ThisArticleisatestdude\\\\960553dd-3c6a-4ebd-85a3-67910dde0bb8_image_2.png\" width=\"1536\" height=\"930\"></p>"));
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            url.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Once());
+        }
+        [Test]
+        public async Task EditArticle_CanCreateTheAJAXLink_ReturnBlogArticle_SetTHeModelFlagAsRequestToTrue_ReturnAddArticleView()
+        {
+            //arrange
+            //this test must change \ to this \\
+            BlogArticle? article = new BlogArticle
+            {
+                Id = 1,
+                HtmlContent = "TEST"
+            };
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(1)).ReturnsAsync(article);
+            var url = new Mock<IUrlHelper>();
+            _blogController.Url = url.Object;
+            url.Setup(x => x.Action(It.IsAny<UrlActionContext>())).Returns("/test/testPath");
+
+            //act
+            var result = await _blogController.EditArticle(1) as ViewResult;
+            var model = result?.ViewData?.Model as AddArticleViewModel ?? new();
+
+
+            //assert
+            Assert.That(model?.BlogArticle.HtmlContent, Is.EqualTo("TEST"));
+            Assert.That(model?.BlogArticle.Id, Is.EqualTo(1));
+            Assert.That(model?.IsEditRequest, Is.True);
+            Assert.That(model?.AJAXLink, Is.EqualTo("/test/testPath"));
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            url.Verify(x => x.Action(It.IsAny<UrlActionContext>()), Times.Once());
+        }
+        #endregion
+        #region Update Article
+        [Test]
+        public async Task UpdateArticle_ModelStateIsNotValid_ReturnBadRequest()
+        {
+            //arrange
+            _blogController.ModelState.AddModelError("error", "An Error occured");
+            var model = new BlogArticleBindingTarget();
+
+            //act
+            var result = await _blogController.UpdateArticle(1,default!, model, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+
+            //assert
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_ArticleYOuAReTryingToUpdateIsNotFound_ReturnBadRequest()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle? articleToUpdate = default!;
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result!.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model?.Error, Is.EqualTo("NotFound"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_TitleImageMimeTypeIsNotAccepted_ReturnBadRequest()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+            _formFile.SetupGet(x => x.ContentType).Returns("application/test");
+
+            //act
+            var result = await _blogController.UpdateArticle(1, _formFile.Object, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("PNG-JPEG-Only"));
+           
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+      
+        public async Task UpdateArticle_TitleImageMimeTypeIsAcceptedButTheSizeIsBiggerThanTheLimit_ReturnBadRequest()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            _formFile.SetupGet(x => x.Length).Returns(10 * 1024 * 1024);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, _formFile.Object, article, default!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("BigSize"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_BlogPicturesContetTypeIsNotJpegOrPNG_ReturnBadRequest()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+        
+            _formFile.SetupGet(x => x.ContentType).Returns("application/test");
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //act
+            var result = await _blogController.UpdateArticle(1,default!, article, _formFileArray!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("PNG-JPEG-Only"));
+          
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_BlogPicturesContainPictureWithSizeBiggerThanTheLimit_ReturnBadRequest()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            _formFile.SetupGet(x => x.Length).Returns(10 * 1024 * 1024); //10mb current limit 5mb
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, _formFileArray!, Enumerable.Empty<int>()) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("BigSize"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+        }
+
+         [Test]
+        public async Task UpdateArticle_TagsAreEmpty_ReturnBadRequest()
+        {
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            var emptyTagCollection = new List<int>();
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default!, emptyTagCollection) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("TagRequired"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.Never());
+            _htmlDocumentService.Verify(x => x.LoadHtml(It.IsAny<string>()), Times.Never());
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_TagsAreNotFoundInTHeDBAfterFilter_ReturnBadRequest()
+        {
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            var emptyTagCollection = new List<int>() {1,2,3};
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default!, emptyTagCollection) as BadRequestObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.BadRequest));
+            Assert.That(model.Error, Is.EqualTo("InvalidTags"));
+
+            _blogRepository.Verify(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>()), Times.Once());
+            _blogRepository.Verify(x => x.TagExist(It.IsAny<int>()), Times.AtLeastOnce());
+            _htmlDocumentService.Verify(x => x.LoadHtml(It.IsAny<string>()), Times.Never());
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+        }
+
+        // html images filter
+        [Test]
+        public async Task UpdateArticle_NumberOfImagesAndNumberOfImgNodesDontMatch_ImagesAreNotSavedOnTheServer_ReturnOkResult()
+        //in theory this should never happen in a real environment Only if HtmlDoc Was altered on ClientSide
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png"); //pass blogPictures Validation
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //html
+            var htmlDoc = new HtmlDocument();
+            var imgNodes = new HtmlNodeCollection(htmlDoc.DocumentNode);//empty collection
+            _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes);
+
+            //act
+            var result = await _blogController.UpdateArticle(1,default!, article, _formFileArray!, mockTags) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succes", model.Message);
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Once());
+            _htmlDocumentService.Verify(x => x.SelectNodes(It.IsAny<string>()), Times.Once());
+
+            _fileSystemService.Verify(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Never());
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Never());
+            _directoryInfoWrapper.Verify(x => x.CreateSubdirectory(It.IsAny<string>()), Times.Never());
+        }
+
+        [Test]
+        public async Task UpdateArticle_WriteAllBytesThrowsException_ReturnInternalServerError()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //pass title validation
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //web rooth path for Path.Combine
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testPath");
+
+            //arrange html doc
+            var htmlDoc = new HtmlDocument();
+            var imgNodes = new HtmlNodeCollection(htmlDoc.DocumentNode)
+            {
+                HtmlNode.CreateNode("<img src='image1.jpg'>"),
+                HtmlNode.CreateNode("<img src='image2.jpg'>")
+            };
+            _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes); //returns count of two like in the form file array.
+                                                                                                  //pass nodes check validation
+
+            _fileSystemService.Setup(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), default)).ThrowsAsync(new Exception("Test Error"));
+
+            //directory info return a new IDirectoryInfoWrapper
+            var subdirectoryMock = new Mock<IDirectoryInfoWrapper>();
+            subdirectoryMock.SetupGet(x => x.Name).Returns("testName");
+            _directoryInfoWrapper.Setup(x => x.CreateSubdirectory(It.IsAny<string>())).Returns(subdirectoryMock.Object);
+
+            //act
+            var result = await _blogController.UpdateArticle(1,default!, article, _formFileArray!, mockTags) as ObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.InternalServerError));
+            Assert.That(model.Error, Is.EqualTo("ServerError"));
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _htmlDocumentService.Verify(x => x.OuterHtml(), Times.Never());
+
+            _htmlDocumentService.Verify(x => x.SelectNodes(It.IsAny<string>()), Times.Once());
+            _fileSystemService.Verify(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.CreateSubdirectory(It.IsAny<string>()), Times.Once());
+
+            _fileSystemService.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Once());
+            subdirectoryMock.Verify(x => x.Delete(), Times.Once());
+        }
+
+        [Test]
+        public async Task UpdateArticle_WriteAllBytesThrowsExceptionAndRollBackDeleteingCoruptedFilesAndTheCreatedFolderThrowsException_ReturnInternalServerError()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //pass title validation
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //web rooth path for Path.Combine
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testPath");
+
+            //arrange html doc
+            var htmlDoc = new HtmlDocument();
+            var imgNodes = new HtmlNodeCollection(htmlDoc.DocumentNode)
+            {
+                HtmlNode.CreateNode("<img src='image1.jpg'>"),
+                HtmlNode.CreateNode("<img src='image2.jpg'>")
+            };
+            _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes); //returns count of two like in the form file array.
+                                                                                                  //pass nodes check validation
+
+            _fileSystemService.Setup(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), default)).ThrowsAsync(new Exception("Test Error"));
+
+            //directory info return a new IDirectoryInfoWrapper
+            var subdirectoryMock = new Mock<IDirectoryInfoWrapper>();
+            subdirectoryMock.SetupGet(x => x.Name).Returns("testName");
+            _directoryInfoWrapper.Setup(x => x.CreateSubdirectory(It.IsAny<string>())).Returns(subdirectoryMock.Object);
+            subdirectoryMock.Setup(x => x.Delete()).Throws(new Exception("error"));//throws another exception 
+
+
+            //act
+            var result = await _blogController.UpdateArticle(1,default!, article, _formFileArray!, mockTags) as ObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.InternalServerError));
+            Assert.That(model.Error, Is.EqualTo("ServerError"));
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Never());
+            _htmlDocumentService.Verify(x => x.OuterHtml(), Times.Never());
+
+            _htmlDocumentService.Verify(x => x.SelectNodes(It.IsAny<string>()), Times.Once());
+            _fileSystemService.Verify(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.CreateSubdirectory(It.IsAny<string>()), Times.Once());
+
+            _fileSystemService.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Once());
+        }
+
+        [Test]
+        public async Task UpdateArticle_ImagesAreSavedToTheServer_ReturnOkResult()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //pass title validation
+            _formFile.SetupGet(x => x.ContentType).Returns("image/png");
+            var mockSecondFormFile = new Mock<IFormFile>();
+            mockSecondFormFile.SetupGet(x => x.ContentType).Returns("image/jpeg");
+            _formFileArray = new IFormFile[] { mockSecondFormFile.Object, _formFile.Object };
+
+            //web rooth path for Path.Combine
+            _webHost.SetupGet(x => x.WebRootPath).Returns("/testPath");
+
+            //arrange html doc
+            var htmlDoc = new HtmlDocument();
+            var imgNodes = new HtmlNodeCollection(htmlDoc.DocumentNode)
+            {
+                HtmlNode.CreateNode("<img src='image1.jpg'>"),
+                HtmlNode.CreateNode("<img src='image2.jpg'>")
+            };
+            _htmlDocumentService.Setup(x => x.SelectNodes(It.IsAny<string>())).Returns(imgNodes); //returns count of two like in the form file array.
+                                                                                                  //pass nodes check validation
+
+            //directory info return a new IDirectoryInfoWrapper
+            var subdirectoryMock = new Mock<IDirectoryInfoWrapper>();
+            subdirectoryMock.SetupGet(x => x.Name).Returns("testName");
+            _directoryInfoWrapper.Setup(x => x.CreateSubdirectory(It.IsAny<string>())).Returns(subdirectoryMock.Object);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, _formFileArray!, mockTags) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succes", model.Message);
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Once());
+            _htmlDocumentService.Verify(x => x.OuterHtml(), Times.Once());
+
+            _htmlDocumentService.Verify(x => x.SelectNodes(It.IsAny<string>()), Times.Once());
+            _fileSystemService.Verify(x => x.WriteAllBytes(It.IsAny<string>(), It.IsAny<byte[]>(), default), Times.AtLeast(1));
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.CreateSubdirectory(It.IsAny<string>()), Times.Once());
+
+            _fileSystemService.Verify(x => x.DeleteFile(It.IsAny<string>()), Times.Never());
+            subdirectoryMock.Verify(x => x.Delete(), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_DeleteOldStaticFilesFolderThrowsExceptionButIsNotBreakingTheResponse_ReturnOk()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle()
+            {
+                StaticFolderGuidIdentifier = "Test"
+            };
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+            _directoryInfoWrapper.Setup(x => x.GetDirectories()).Throws(new Exception("error"));
+
+            _webHost.SetupGet(x => x.WebRootPath).Returns("testPath");
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default, mockTags) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succes", model.Message);
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.GetDirectories(), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Once());
+        }
+        [Test]
+        public async Task UpdateArticle_DeleteOldStaticFilesFolder_OldFolderiSFound_DeleteIsCalled_ReturnOk()
+        {
+            //arrange
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle()
+            {
+                StaticFolderGuidIdentifier = "TestOldFolderName"
+            };
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            _webHost.SetupGet(x => x.WebRootPath).Returns("testPath");
+
+            var mockOldDirectory = new Mock<IDirectoryInfoWrapper>();
+            mockOldDirectory.SetupGet(x => x.Name).Returns("TestOldFolderName");//must match the staticFolderGuidIdentitifier
+            
+            var mockAnotherFolder = new Mock<IDirectoryInfoWrapper>();
+            mockAnotherFolder.SetupGet(x => x.Name).Returns("AnotherFolderName");//in the same array as the OldFolderOfTheCurrentArticle
+
+            _directoryInfoWrapper.Setup(x => x.GetDirectories())
+                                 .Returns(new IDirectoryInfoWrapper[] { mockOldDirectory.Object, mockAnotherFolder.Object });
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default, mockTags) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succes", model.Message);
+            _blogRepository.Verify(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>()), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.GetDirectories(), Times.Once());
+            _directoryInfoWrapper.Verify(x => x.SetDirectory(It.IsAny<string>()), Times.Once());
+
+            mockOldDirectory.Verify(x => x.Delete(), Times.Once());//only the old directory is DELETED
+            mockAnotherFolder.Verify(x => x.Delete(), Times.Never());
+        }
+        [Test]
+        public async Task UpdateArticle_UpdateBlogArticleRepositoryThrowsException_ReturnUnprocessableEntity()
+        {
+            //arrage
+            var article = new BlogArticleBindingTarget();
+            BlogArticle articleToUpdate = new BlogArticle();
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            _blogRepository.Setup(x => x.UpdateBlogArticle(It.IsAny<BlogArticle>())).ThrowsAsync(new Exception("error"));
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default, mockTags) as UnprocessableEntityObjectResult;
+            var model = result!.Value as ErrorResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.UnprocessableEntity));
+            Assert.That(model.Error, Is.EqualTo("CouldNotUpdate"));
+            _blogRepository.Verify(x => x.UpdateBlogArticle(articleToUpdate), Times.Once());
+        }
+        [Test]
+        public async Task UpdateArticle_IsUpdatedAndCardIntroIsSetUpAsWell_ReturnOk()
+        {
+            //arrage
+            var article = new BlogArticleBindingTarget() 
+            {
+                HtmlContent = "TestHtmlContent",
+                Title = "TestTitle",
+            };
+            BlogArticle articleToUpdate = new BlogArticle()
+            {
+                Id= 1,
+                HtmlContent = "Change",
+                Title = "Change",
+            };
+            _blogRepository.Setup(x => x.GetBlogArticleWithAuthorAndTags(It.IsAny<int>())).ReturnsAsync(articleToUpdate);
+
+            var node = HtmlNode.CreateNode("<p>CardIntro</p>");
+            _htmlDocumentService.Setup(x => x.SelectSingleNode(It.IsAny<string>())).Returns(node);
+
+            //pass tags validation
+            var mockTags = new List<int> { 1 };
+            _blogRepository.Setup(x => x.TagExist(It.IsAny<int>())).ReturnsAsync(true);
+
+            //act
+            var result = await _blogController.UpdateArticle(1, default!, article, default, mockTags) as OkObjectResult;
+            var model = result!.Value as SuccesResponse ?? new();
+
+            //assert
+            Assert.That(result.StatusCode, Is.EqualTo((int)HttpStatusCode.OK));
+            StringAssert.Contains("succes", model.Message);
+
+            Assert.That(articleToUpdate.HtmlContent, Is.EqualTo("TestHtmlContent"));
+            Assert.That(articleToUpdate.Title, Is.EqualTo("TestTitle"));
+            Assert.That(articleToUpdate.CardIntro, Is.EqualTo("<p>CardIntro</p>"));
+
+            _blogRepository.Verify(x => x.UpdateBlogArticle(articleToUpdate), Times.Once());
+            _htmlDocumentService.Verify(x => x.SelectSingleNode(It.IsAny<string>()), Times.Once());
         }
         #endregion
     }
