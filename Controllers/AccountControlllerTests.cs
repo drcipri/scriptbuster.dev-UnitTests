@@ -173,7 +173,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var user = new AplicationUser { UserName = "Test" };
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>()))!.ReturnsAsync(user);
 
-            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, false))
+            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, true))
                           .ReturnsAsync(new SignInResultMock(false));
 
             var mockConnection = new Mock<ConnectionInfo>();
@@ -200,7 +200,43 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(result.ViewName, Is.EqualTo("Login"));
             _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
             _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
-            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, false), Times.Once());
+            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, true), Times.Once());
+        }
+        [Test]
+        public async Task LoginUser_ToManyAttemptsAccountIsLockout_RedirectToLoginPage()
+        {
+            //arrange
+            var user = new AplicationUser { UserName = "Test" };
+            _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>()))!.ReturnsAsync(user);
+
+            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, true))
+                          .ReturnsAsync(new SignInResultLockOutMock(true));
+
+            var mockConnection = new Mock<ConnectionInfo>();
+            mockConnection.Setup(x => x.RemoteIpAddress).Returns(IPAddress.Parse("192.168.1.1"));
+            _accesor.Setup(x => x.HttpContext).Returns(_context.Object);
+            _context.Setup(x => x.Connection).Returns(mockConnection.Object);
+
+            byte[] logginAttempts = Encoding.ASCII.GetBytes("1");
+            _cache.Setup(x => x.GetAsync(It.IsAny<string>(), default)).ReturnsAsync(logginAttempts);
+
+            var model = new LoginViewModel
+            {
+                UserName = "Test",
+                Password = "PasswordTest",
+                ReturnUrl = default
+            };
+            //act
+            var result = await _accountController.LoginUser(model) as ViewResult;
+            var viewModel = result?.ViewData.Model as LoginViewModel ?? new();
+
+            //assert
+            Assert.That(viewModel, Is.SameAs(model));
+            Assert.That(result?.ViewData.ModelState.ContainsKey("AccountLocked"), Is.True);
+            Assert.That(result.ViewName, Is.EqualTo("Login"));
+            _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
+            _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
+            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, true), Times.Once());
         }
         [Test]
         public async Task LoginUser_Succeded_RedirectToAdminPageReturnUrlIsNull()
@@ -209,7 +245,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var user = new AplicationUser { UserName = "Test" };
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>()))!.ReturnsAsync(user);
 
-            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, false))
+            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, true))
                           .ReturnsAsync(new SignInResultMock(true));
 
             var mockConnection = new Mock<ConnectionInfo>();
@@ -233,7 +269,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(result!.PageName, Is.EqualTo("/Admin"));
             _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
             _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
-            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, false), Times.Once());
+            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, true), Times.Once());
         }
         [Test]
         public async Task LoginUser_Succeded_RedirectToReturnUrlBecauseItsNotNull()
@@ -242,7 +278,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             var user = new AplicationUser { UserName = "Test" };
             _userManager.Setup(x => x.FindByNameAsync(It.IsAny<string>()))!.ReturnsAsync(user);
 
-            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, false))
+            _signInManager.Setup(x => x.PasswordSignInAsync(It.IsAny<AplicationUser>(), It.IsAny<string>(), false, true))
                           .ReturnsAsync(new SignInResultMock(true));
 
             var mockConnection = new Mock<ConnectionInfo>();
@@ -266,7 +302,7 @@ namespace scriptbuster.dev_UnitTests.Controllers
             Assert.That(result!.Url, Is.EqualTo("/test/url"));
             _signInManager.Verify(x => x.SignOutAsync(), Times.Once());
             _userManager.Verify(x => x.FindByNameAsync(It.IsAny<string>()), Times.Once());
-            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, false), Times.Once());
+            _signInManager.Verify(x => x.PasswordSignInAsync(It.Is<AplicationUser>(x => x == user), It.Is<string>(x => x == model.Password), false, true), Times.Once());
         }
         [Test]
         public async Task Logout_ReturnLoginPage()
@@ -1027,6 +1063,13 @@ namespace scriptbuster.dev_UnitTests.Controllers
         public SignInResultMock(bool succedValue)
         {
             Succeeded = succedValue;
+        }
+    }
+    public class SignInResultLockOutMock : Microsoft.AspNetCore.Identity.SignInResult
+    {
+        public SignInResultLockOutMock(bool isLockedOut)
+        {
+            IsLockedOut = isLockedOut;
         }
     }
     public class IdentityResultMock : IdentityResult
